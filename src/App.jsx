@@ -125,4 +125,91 @@ export default function App() {
 
   // Autenticação anónima no Firebase
   useEffect(() => {
-    const
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setFirebaseUser(user);
+        setAuthLoading(false);
+      } else {
+        try {
+          const cred = await signInAnonymously(auth);
+          setFirebaseUser(cred.user);
+          setAuthError('');
+        } catch (err) {
+          console.error(err);
+          setAuthError('Falha ao autenticar no Firebase. Verifique se o login Anónimo está ativado.');
+        } finally {
+          setAuthLoading(false);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Escuta em tempo real das coleções do Firestore após autenticado
+  useEffect(() => {
+    if (!firebaseUser) return;
+
+    const cfgRef = doc(db, 'settings', 'storeConfig');
+    const unsubCfg = onSnapshot(
+      cfgRef,
+      (snap) => {
+        if (snap.exists()) {
+          const merged = { ...DEFAULT_CONFIG, ...snap.data() };
+          setConfig(merged);
+          setCfgForm(merged);
+        } else {
+          setDoc(cfgRef, DEFAULT_CONFIG).catch(() => {});
+        }
+      },
+      (err) => console.error('Erro config:', err)
+    );
+
+    const unsubProducts = onSnapshot(
+      collection(db, 'products'),
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setProducts(list);
+      },
+      (err) => console.error('Erro produtos:', err)
+    );
+
+    const unsubSales = onSnapshot(
+      collection(db, 'sales'),
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setSales(list);
+      },
+      (err) => console.error('Erro vendas:', err)
+    );
+
+    const unsubTx = onSnapshot(
+      collection(db, 'transactions'),
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setTransactions(list);
+      },
+      (err) => console.error('Erro financeiro:', err)
+    );
+
+    return () => {
+      unsubCfg();
+      unsubProducts();
+      unsubSales();
+      unsubTx();
+    };
+  }, [firebaseUser]);
+
+  // Login por PIN
+  const handlePinSubmit = (e) => {
+    e.preventDefault();
+    if (pinInput === config.adminPin) {
+      setRole('admin');
+      setPinError('');
+      setPinInput('');
+      showToast('Acesso Administrador liberado');
+    } else if (pinInput === config.staffPin) {
+      setRole
+      
