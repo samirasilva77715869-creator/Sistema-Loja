@@ -2132,6 +2132,56 @@ function PdvView({
     </div>
   );
 }
+function BarcodeSvg({ value }) {
+  const svgRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const code = String(value || '').trim();
+    if (!svgRef.current || !code) return;
+
+    const renderBars = () => {
+      if (!window.JsBarcode || !svgRef.current) return;
+      const draw = (fmt) => {
+        window.JsBarcode(svgRef.current, code, {
+          format: fmt,
+          width: 2,
+          height: 44,
+          displayValue: true,
+          fontSize: 12,
+          margin: 6,
+          background: '#ffffff',
+          lineColor: '#000000'
+        });
+      };
+      try {
+        draw(code.length === 13 ? 'EAN13' : 'CODE128');
+      } catch {
+        try {
+          draw('CODE128');
+        } catch (_) {}
+      }
+    };
+
+    if (window.JsBarcode) {
+      renderBars();
+    } else {
+      const existing = document.querySelector('script[data-jsbarcode="true"]');
+      if (existing) {
+        existing.addEventListener('load', renderBars, { once: true });
+      } else {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+        script.async = true;
+        script.dataset.jsbarcode = 'true';
+        script.onload = renderBars;
+        document.head.appendChild(script);
+      }
+    }
+  }, [value]);
+
+  if (!String(value || '').trim()) return null;
+  return <svg ref={svgRef} className="max-w-full bg-white" />;
+}
 
 // ============================================================================
 // 13. PRODUTOS, GRADE (TAMANHO x COR) E CÓDIGO DE BARRAS EAN-13
@@ -2395,9 +2445,12 @@ function ProdutosEstoqueView({
               className="p-2 rounded-xl bg-slate-100 text-slate-600"
             >
               <X className="w-4 h-4" />
-            </button>
-          </div>
-
+                  </button>
+    </div>
+    
+      
+  
+      
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-2">
               <label className="block text-xs font-semibold text-slate-600 mb-1">Nome do Produto *</label>
@@ -2441,10 +2494,13 @@ function ProdutosEstoqueView({
                 >
                   <Barcode className="w-4 h-4" />
                 </button>
-              </div>
-            </div>
-
-            <div>
+                  </div>
+    <div className="mt-2">
+      <BarcodeSvg value={codigoBarrasBase} />
+    </div>
+  </div>
+  <div>
+    
               <label className="block text-xs font-semibold text-slate-600 mb-1">Preço de Venda (R$) *</label>
               <input
                 type="number"
