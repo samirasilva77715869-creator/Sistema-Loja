@@ -3392,7 +3392,472 @@ function FinanceiroView({
     </div>
   );
 }
+ function ContabilidadeView({ movimentacoesCaixa = [], caixas = [] }) {
+  const STORAGE_KEY = 'loja_contabilidade_lancamentos_v1';
 
+  const hojeIso = new Date().toISOString().slice(0, 10);
+  const mesAtual = new Date().toISOString().slice(0, 7); // AAAA-MM
+
+  const [modoPeriodo, setModoPeriodo] = useState('mensal'); // 'mensal' | 'semanal'
+  const [mesSelecionado, setMesSelecionado] = useState(mesAtual);
+  const [dataReferenciaSemana, setDataReferenciaSemana] = useState(hojeIso);
+
+  const [lancamentosManuais, setLancamentosManuais] = useState(() => {
+    try {
+      const salvo = localStorage.getItem(STORAGE_KEY);
+      return salvo ? JSON.parse(salvo) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [dataLanc, setDataLanc] = useState(hojeIso);
+  const [tipoLanc, setTipoLanc] = useState('saida'); // 'entrada' | 'saida'
+  const [categoriaLanc, setCategoriaLanc] = useState('Água / Luz');
+  const [descricaoLanc, setDescricaoLanc] = useState('');
+  const [valorLanc, setValorLanc] = useState('');
+  const [editandoId, setEditandoId] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lancamentosManuais));
+    } catch {
+      // ignora erro de armazenamento
+    }
+  }, [lancamentosManuais]);
+
+  const normalizarDataIso = (valorData) => {
+    if (!valorData) return hojeIso;
+    if (typeof valorData === 'string' && valorData.length >= 10) {
+      return valorData.slice(0, 10);
+    }
+    const d = new Date(valorData);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+    return hojeIso;
+  };
+
+  const dentroDoPeriodo = (dataIso) => {
+    const limpa = normalizarDataIso(dataIso);
+    if (modoPeriodo === 'mensal') {
+      return limpa.startsWith(mesSelecionado);
+    }
+    const ref = new Date(`${dataReferenciaSemana || hojeIso}T12:00:00`);
+    const diaSemana = ref.getDay(); // 0 dom ... 6 sab
+    const inicio = new Date(ref);
+    inicio.setDate(ref.getDate() - diaSemana);
+    const fim = new Date(inicio);
+    fim.setDate(inicio.getDate() + 6);
+
+    const atual = new Date(`${limpa}T12:00:00`);
+    return atual >= inicio && atual <= fim;
+  };
+
+  // Movimentações automáticas vindas do caixa/vendas do app
+  const itensAutomaticos = useMemo(() => {
+    const lista = Array.isArray(movimentacoesCaixa) ? movimentacoesCaixa : [];
+    return lista
+      .filter((item) => dentroDoPeriodo(item.data || item.createdAt || item.criadoEm))
+      .map((item, idx) => {
+        const valorNum = Math.abs(Number(item.valor ?? item.total ?? 0) || 0);
+        const tipoTexto = String(item.tipo || '').toLowerCase();
+        const ehSaida =
+          tipoTexto.includes('saida') ||
+          tipoTexto.includes('saída') ||
+          tipoTexto.includes('retirada') ||
+          tipoTexto.includes('despesa') ||
+          Number(item.valor) < 0;
+
+        return {
+          id: `auto-${item.id || idx}`,
+          data: normalizarDataIso(item.data || item.createdAt || item.criadoEm),
+          descricao:
+            item.descricao ||
+            item.motivo ||
+            item.observacao ||
+            (ehSaida ? 'Saída do caixa' : 'Venda / Entrada do caixa'),
+          categoria: item.categoria || (ehSaida ? 'Caixa / Saída' : 'Venda'),
+          origem: 'Automático',
+          tipo: ehSaida ? 'saida' : 'entrada',
+          valor: valorNum,
+        };
+      });
+  }, [movimentacoesCaixa, modoPeriodo, mesSelecionado, dataReferenciaSemana]);
+
+  // Lançamentos manuais filtrados pelo período
+  const itensManuaisFiltrados = useMemo(() => {
+    return lancamentosManuais
+      .filter((item) => dentroDoPeriodo(item.data))
+      .map((item) => ({
+        ...item,
+        origem: 'Manual',
+        valor: Math.abs(Number(item.valor) || 0),
+      }));
+  }, [lancamentosManuais, modoPeriodo, mesSelecionado, dataReferenciaSemana]);
+
+  const linhasPlanilha = useMemo(() => {
+    return [...itensManuaisFiltrados, ...itensAutomaticos].sort((a, b) =>
+      b.data.localeCompare(a.data)
+    );
+  }, [itensManuaisFiltrados, itensAutomaticos]);
+
+  const totais = useMemo(() => {
+    let faturamento = 0;
+    let despesas = 0;
+
+    for (const linha of linhasPlanilha) {
+      if (linha.tipo === 'entrada') {
+        faturamento += linha.valor;
+      } else {
+        despesas += linha.valor;
+      }
+    }
+
+    return {
+      faturamento,
+      despesas,
+      saldo: faturamento - despesas,
+    };
+  }, [linhasPlanilha]);
+
+  const formatarMoeda = (num) =>
+    (Number(num) || 0).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+
+  const limparFormulario = () => {
+    setEditandoId(null);
+    setDataLanc(hojeIso);
+    setTipoLanc('saida');
+    setCategoriaLanc('Água / Luz');
+    setDescricaoLanc('');
+    setValorLanc('');
+  };
+
+  const handleSalvarLancamento = (e) => {
+    e.preventDefault();
+    const valorLimpo = Number(String(valorLanc).replace(',', '.'));
+    if (!descricaoLanc.trim() || !valorLimpo || valorLimpo <= 0) return;
+
+    if (editandoId) {
+      setLancamentosManuais((prev) =>
+        prev.map((item) =>
+          item.id === editandoId
+            ? {
+                ...item,
+                data: dataLanc || hojeIso,
+                tipo: tipoLanc,
+                categoria: categoriaLanc,
+                descricao: descricaoLanc.trim(),
+                valor: Math.abs(valorLimpo),
+              }
+            : item
+        )
+      );
+      limparFormulario();
+      return;
+    }
+
+    const novoItem = {
+      id: `man-${Date.now()}`,
+      data: dataLanc || hojeIso,
+      tipo: tipoLanc,
+      categoria: categoriaLanc,
+      descricao: descricaoLanc.trim(),
+      valor: Math.abs(valorLimpo),
+    };
+
+    setLancamentosManuais((prev) => [novoItem, ...prev]);
+    limparFormulario();
+  };
+
+  const iniciarEdicao = (item) => {
+    setEditandoId(item.id);
+    setDataLanc(item.data);
+    setTipoLanc(item.tipo);
+    setCategoriaLanc(item.categoria);
+    setDescricaoLanc(item.descricao);
+    setValorLanc(String(item.valor));
+  };
+
+  const excluirLancamento = (id) => {
+    setLancamentosManuais((prev) => prev.filter((item) => item.id !== id));
+    if (editandoId === id) {
+      limparFormulario();
+    }
+  };
+
+  const exportarCsv = () => {
+    const cabecalho = ['Data', 'Descricao', 'Categoria', 'Origem', 'Tipo', 'Valor'];
+    const linhasCsv = linhasPlanilha.map((l) => [
+      l.data,
+      `"${String(l.descricao || '').replace(/"/g, '""')}"`,
+      `"${String(l.categoria || '').replace(/"/g, '""')}"`,
+      l.origem,
+      l.tipo === 'entrada' ? 'Entrada' : 'Saida',
+      Number(l.valor || 0).toFixed(2).replace('.', ','),
+    ]);
+
+    const conteudo = [cabecalho.join(';'), ...linhasCsv.map((r) => r.join(';'))].join('\n');
+    const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contabilidade-${modoPeriodo}-${modoPeriodo === 'mensal' ? mesSelecionado : dataReferenciaSemana}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+        <div>
+          <h2 className="text-base font-bold text-slate-900">
+            Contabilidade & Planilha da Loja
+          </h2>
+          <p className="text-xs text-slate-500">
+            Vendas automáticas do sistema + lançamentos manuais (aluguel, água, luz, DAS MEI, mercadorias)
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={modoPeriodo}
+            onChange={(e) => setModoPeriodo(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+          >
+            <option value="mensal">Fechamento Mensal</option>
+            <option value="semanal">Fechamento Semanal</option>
+          </select>
+
+          {modoPeriodo === 'mensal' ? (
+            <input
+              type="month"
+              value={mesSelecionado}
+              onChange={(e) => setMesSelecionado(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+            />
+          ) : (
+            <input
+              type="date"
+              value={dataReferenciaSemana}
+              onChange={(e) => setDataReferenciaSemana(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={exportarCsv}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800"
+          >
+            Exportar CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Cards de resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200">
+          <div className="text-xs text-slate-500">Faturamento / Entradas</div>
+          <div className="text-lg font-bold text-emerald-700 mt-1">
+            {formatarMoeda(totais.faturamento)}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            Automático do caixa + entradas manuais
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200">
+          <div className="text-xs text-slate-500">Despesas & Custos da Loja</div>
+          <div className="text-lg font-bold text-rose-700 mt-1">
+            {formatarMoeda(totais.despesas)}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            Água, luz, aluguel, DAS MEI, mercadorias e saídas
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200">
+          <div className="text-xs text-slate-500">Saldo do Período</div>
+          <div
+            className={`text-lg font-bold mt-1 ${
+              totais.saldo >= 0 ? 'text-slate-900' : 'text-rose-700'
+            }`}
+          >
+            {formatarMoeda(totais.saldo)}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            Entradas menos saídas no período selecionado
+          </div>
+        </div>
+      </div>
+
+      {/* Formulário de lançamento manual */}
+      <form
+        onSubmit={handleSalvarLancamento}
+        className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+            {editandoId ? 'Editar lançamento manual' : '+ Adicionar lançamento manual'}
+          </h3>
+          {editandoId && (
+            <button
+              type="button"
+              onClick={limparFormulario}
+              className="text-xs text-slate-500 underline"
+            >
+              Cancelar edição
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
+          <input
+            type="date"
+            value={dataLanc}
+            onChange={(e) => setDataLanc(e.target.value)}
+            className="px-2.5 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+            required
+          />
+
+          <select
+            value={tipoLanc}
+            onChange={(e) => setTipoLanc(e.target.value)}
+            className="px-2.5 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+          >
+            <option value="saida">Saída / Despesa</option>
+            <option value="entrada">Entrada / Receita</option>
+          </select>
+
+          <select
+            value={categoriaLanc}
+            onChange={(e) => setCategoriaLanc(e.target.value)}
+            className="px-2.5 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+          >
+            <option value="Água / Luz">Água / Luz</option>
+            <option value="Aluguel">Aluguel</option>
+            <option value="DAS MEI">DAS MEI</option>
+            <option value="Mercadoria">Mercadoria</option>
+            <option value="Venda">Venda</option>
+            <option value="Outros">Outros</option>
+          </select>
+
+          <input
+            type="text"
+            placeholder="Ex.: Conta de luz, DAS MEI..."
+            value={descricaoLanc}
+            onChange={(e) => setDescricaoLanc(e.target.value)}
+            className="px-2.5 py-2 rounded-lg border border-slate-300 text-xs bg-white lg:col-span-2"
+            required
+          />
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Valor (ex: 120,00)"
+              value={valorLanc}
+              onChange={(e) => setValorLanc(e.target.value)}
+              className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-xs bg-white"
+              required
+            />
+            <button
+              type="submit"
+              className="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold whitespace-nowrap hover:bg-slate-800"
+            >
+              {editandoId ? 'Salvar' : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      {/* Planilha */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+              <th className="py-2.5 px-3">Data</th>
+              <th className="py-2.5 px-3">Descrição</th>
+              <th className="py-2.5 px-3">Categoria</th>
+              <th className="py-2.5 px-3">Origem</th>
+              <th className="py-2.5 px-3 text-right">Valor</th>
+              <th className="py-2.5 px-3 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhasPlanilha.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="py-6 px-3 text-center text-slate-400">
+                  Nenhum lançamento encontrado neste período.
+                </td>
+              </tr>
+            ) : (
+              linhasPlanilha.map((linha) => {
+                const ehManual = linha.origem === 'Manual';
+                const ehEntrada = linha.tipo === 'entrada';
+                return (
+                  <tr
+                    key={linha.id}
+                    className="border-b border-slate-100 hover:bg-slate-50/70"
+                  >
+                    <td className="py-2 px-3 whitespace-nowrap">{linha.data}</td>
+                    <td className="py-2 px-3">{linha.descricao}</td>
+                    <td className="py-2 px-3 whitespace-nowrap">{linha.categoria}</td>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                          ehManual
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-sky-100 text-sky-800'
+                        }`}
+                      >
+                        {linha.origem}
+                      </span>
+                    </td>
+                    <td
+                      className={`py-2 px-3 text-right font-semibold whitespace-nowrap ${
+                        ehEntrada ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
+                    >
+                      {ehEntrada ? '+' : '-'} {formatarMoeda(linha.valor)}
+                    </td>
+                    <td className="py-2 px-3 text-right whitespace-nowrap">
+                      {ehManual ? (
+                        <div className="inline-flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicao(linha)}
+                            className="text-slate-700 underline"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => excluirLancamento(linha.id)}
+                            className="text-rose-600 underline"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">Automático</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+              }
+                
 // ============================================================================
 // 15. PEDIDOS ONLINE (ADMIN)
 // ============================================================================
