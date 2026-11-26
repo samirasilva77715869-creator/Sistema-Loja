@@ -2214,7 +2214,26 @@ function ProdutosEstoqueView({
   const [filtroTexto, setFiltroTexto] = useState('');
   const [ajusteVariacaoId, setAjusteVariacaoId] = useState(null);
   const [novoEstoqueValor, setNovoEstoqueValor] = useState('');
+    const [etiquetaPrint, setEtiquetaPrint] = useState(null);
+  const [tamanhoEtiqueta, setTamanhoEtiqueta] = useState('58mm');
+  const [alinhamentoEtiqueta, setAlinhamentoEtiqueta] = useState('center');
 
+  const abrirModalEtiqueta = (variacao) => {
+    setEtiquetaPrint({
+      titulo: variacao.produtoNome || '',
+      detalhe: [variacao.tamanho, variacao.cor].filter(Boolean).join(' • '),
+      precoTexto: formatBRL(variacao.precoVenda),
+      codigoBarras: variacao.codigoBarras || '',
+    });
+  };
+
+  const confirmarImpressaoEtiqueta = () => {
+    setTimeout(() => {
+      window.print();
+    }, 120);
+  };
+  
+  
   const opcoesTamanho = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'Único'];
   const opcoesCor = ['Preto', 'Branco', 'Azul', 'Vermelho', 'Verde', 'Bege', 'Cinza'];
 
@@ -2778,16 +2797,28 @@ function ProdutosEstoqueView({
                           </button>
                         </div>
                       ) : (
+                                              <div className="inline-flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => {
                             setAjusteVariacaoId(v.id);
                             setNovoEstoqueValor(String(safeNum(v.estoque)));
                           }}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold"
                         >
                           Ajustar
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEtiqueta(v)}
+                          title="Configurar e imprimir etiqueta"
+                          className="px-2 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold inline-flex items-center gap-1"
+                        >
+                          <Barcode className="w-3.5 h-3.5" />
+                          <span>Etiqueta</span>
+                        </button>
+                      </div>
+                    
                       )}
                     </td>
                   </tr>
@@ -2797,6 +2828,175 @@ function ProdutosEstoqueView({
           </table>
         </div>
       </div>
+         <style>{`
+        .label-print-area {
+          display: none;
+        }
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .label-print-area,
+          .label-print-area * {
+            visibility: visible !important;
+          }
+          .label-print-area {
+            display: block !important;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: var(--label-width, 58mm);
+            text-align: var(--label-align, center);
+            padding: 3mm;
+            background: #ffffff;
+            color: #000000;
+          }
+        }
+      `}</style>
+
+      {etiquetaPrint && (
+        <>
+          {/* Telinha para editar, escolher tamanho e alinhar/centralizar */}
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-md p-4 space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 text-sm">Editar e Imprimir Etiqueta</h4>
+                <button
+                  type="button"
+                  onClick={() => setEtiquetaPrint(null)}
+                  className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-slate-600 mb-1">Tamanho</label>
+                  <select
+                    value={tamanhoEtiqueta}
+                    onChange={(e) => setTamanhoEtiqueta(e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white"
+                  >
+                    <option value="58mm">58mm</option>
+                    <option value="80mm">80mm</option>
+                    <option value="40mm">40mm</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-600 mb-1">Alinhamento</label>
+                  <div className="flex rounded-lg border border-slate-300 overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setAlinhamentoEtiqueta('left')}
+                      className={`flex-1 py-1.5 ${alinhamentoEtiqueta === 'left' ? 'bg-slate-900 text-white font-semibold' : 'bg-white text-slate-700'}`}
+                    >
+                      Esq
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlinhamentoEtiqueta('center')}
+                      className={`flex-1 py-1.5 ${alinhamentoEtiqueta === 'center' ? 'bg-slate-900 text-white font-semibold' : 'bg-white text-slate-700'}`}
+                    >
+                      Centro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlinhamentoEtiqueta('right')}
+                      className={`flex-1 py-1.5 ${alinhamentoEtiqueta === 'right' ? 'bg-slate-900 text-white font-semibold' : 'bg-white text-slate-700'}`}
+                    >
+                      Dir
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[11px] text-slate-600 mb-1">Nome da peça</label>
+                  <input
+                    type="text"
+                    value={etiquetaPrint.titulo}
+                    onChange={(e) => setEtiquetaPrint({ ...etiquetaPrint, titulo: e.target.value })}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-1">Tamanho / Cor</label>
+                    <input
+                      type="text"
+                      value={etiquetaPrint.detalhe}
+                      onChange={(e) => setEtiquetaPrint({ ...etiquetaPrint, detalhe: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-1">Preço</label>
+                    <input
+                      type="text"
+                      value={etiquetaPrint.precoTexto}
+                      onChange={(e) => setEtiquetaPrint({ ...etiquetaPrint, precoTexto: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-dashed border-slate-300 rounded-xl p-3 bg-slate-50 flex justify-center overflow-x-auto">
+                <div
+                  style={{
+                    width: tamanhoEtiqueta,
+                    textAlign: alinhamentoEtiqueta,
+                  }}
+                  className="bg-white p-2 border border-slate-200 text-black"
+                >
+                  <div className="text-xs font-bold">{etiquetaPrint.titulo}</div>
+                  <div className="text-[11px]">{etiquetaPrint.detalhe}</div>
+                  <div className="text-xs font-bold my-1">{etiquetaPrint.precoTexto}</div>
+                  <div className={alinhamentoEtiqueta === 'center' ? 'flex justify-center' : alinhamentoEtiqueta === 'right' ? 'flex justify-end' : 'flex justify-start'}>
+                    <BarcodeSvg value={etiquetaPrint.codigoBarras} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEtiquetaPrint(null)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmarImpressaoEtiqueta}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold"
+                >
+                  Imprimir agora
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Área isolada usada apenas na impressão */}
+          <div
+            className="label-print-area"
+            style={{
+              '--label-width': tamanhoEtiqueta,
+              '--label-align': alinhamentoEtiqueta,
+            }}
+          >
+            <div className="text-xs font-bold">{etiquetaPrint.titulo}</div>
+            <div className="text-[11px]">{etiquetaPrint.detalhe}</div>
+            <div className="text-xs font-bold my-1">{etiquetaPrint.precoTexto}</div>
+            <div className={alinhamentoEtiqueta === 'center' ? 'flex justify-center' : alinhamentoEtiqueta === 'right' ? 'flex justify-end' : 'flex justify-start'}>
+              <BarcodeSvg value={etiquetaPrint.codigoBarras} />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
