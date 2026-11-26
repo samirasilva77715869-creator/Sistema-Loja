@@ -3,45 +3,137 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   signInAnonymously,
-  onAuthStateChanged,
+  onAuthStateChanged
 } from 'firebase/auth';
 import {
   getFirestore,
   collection,
   doc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
-  onSnapshot,
-  setDoc,
-  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 import {
-  Store,
-  ShoppingBag,
+  LayoutDashboard,
+  ShoppingCart,
   Package,
-  BarChart3,
+  DollarSign,
+  Store,
+  Users,
   Settings,
+  LogOut,
   Lock,
-  Unlock,
   Plus,
-  Minus,
   Trash2,
+  Edit3,
   Search,
   Barcode,
+  Printer,
   CheckCircle2,
-  AlertCircle,
-  Globe,
-  CreditCard,
-  Wallet,
+  AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
-  LogOut,
-  Users,
   RefreshCw,
+  ShoppingBag,
+  Menu,
+  CreditCard,
+  Banknote,
+  QrCode,
+  RotateCcw,
+  X,
+  Check,
+  ChevronRight,
+  Layers,
+  Activity,
+  ExternalLink,
+  ShieldCheck,
+  WifiOff
 } from 'lucide-react';
 
-// Configuração oficial do Firebase do projeto
+// ============================================================================
+// 1. ERROR BOUNDARY RESILIENTE
+// ============================================================================
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null, showDetails: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    this.setState({ error, errorInfo });
+    console.error('Erro capturado pelo ErrorBoundary:', error, errorInfo);
+  }
+
+  handleReload = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    if (typeof window !== 'undefined' && window.location) {
+      window.location.reload();
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+          <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white">Ocorreu um erro inesperado</h1>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  A interface foi protegida para evitar travamentos. Seus dados salvos na nuvem permanecem intactos.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2.5">
+              <button
+                type="button"
+                onClick={this.handleReload}
+                className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Recarregar Sistema
+              </button>
+              <button
+                type="button"
+                onClick={() => this.setState((prev) => ({ showDetails: !prev.showDetails }))}
+                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700"
+              >
+                {this.state.showDetails ? 'Ocultar Detalhes Técnicos' : 'Detalhes Técnicos'}
+              </button>
+            </div>
+
+            {this.state.showDetails && (
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono text-rose-300 overflow-x-auto max-h-48">
+                <p className="font-bold mb-1">{String(this.state.error || 'Erro desconhecido')}</p>
+                {this.state.errorInfo?.componentStack && (
+                  <pre className="text-[10px] text-slate-400 whitespace-pre-wrap">
+                    {this.state.errorInfo.componentStack}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// ============================================================================
+// 2. CONFIGURAÇÃO FIREBASE DO PROJETO (sistemaloja-232f1) E UTILITÁRIOS
+// ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDVrcLxpCrT-MplN17tGzAzOJpa5iAiVBM",
   authDomain: "sistemaloja-232f1.firebaseapp.com",
@@ -52,1303 +144,1811 @@ const firebaseConfig = {
   measurementId: "G-8JWBR4ZZ0Y",
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+let firebaseApp = null;
+let auth = null;
+let db = null;
+let firebaseInitError = null;
+const appId = 'sistemaloja-232f1';
 
-const DEFAULT_CONFIG = {
-  storeName: 'SistemaLoja',
-  currency: 'R$',
-  adminPin: '1234',
-  staffPin: '0000',
-  onlineStoreEnabled: true,
-  whatsappNumber: '',
-};
-
-const DEFAULT_SIZES = ['P', 'M', 'G', 'GG'];
-const DEFAULT_COLORS = ['Preto', 'Branco', 'Azul', 'Vermelho'];
-
-function generateBarcode(prefix = '789') {
-  const randomDigits = Math.floor(100000000 + Math.random() * 900000000).toString();
-  return `${prefix}${randomDigits}`.slice(0, 13);
+try {
+  firebaseApp = initializeApp(firebaseConfig);
+  auth = getAuth(firebaseApp);
+  db = getFirestore(firebaseApp);
+} catch (err) {
+  console.error('Falha ao inicializar Firebase:', err);
+  firebaseInitError = err?.message || 'Falha ao inicializar os serviços do Firebase.';
 }
 
+const DEFAULT_STORE_CONFIG = {
+  nomeFantasia: 'Minha Loja Brasil',
+  razaoSocial: 'Minha Loja Comércio LTDA',
+  cnpj: '00.000.000/0001-00',
+  inscricaoEstadual: 'ISENTO',
+  endereco: 'Rua Principal, 100 - Centro',
+  telefone: '(15) 99999-0000',
+  chavePix: '00.000.000/0001-00',
+  logoUrl: '',
+  regimeTributario: 'Simples Nacional',
+  serieNfce: '1',
+  ambienteFiscal: 'Homologação (Sem emissão SEFAZ)',
+  tokenCsc: '',
+  larguraCupom: '80mm',
+  mensagemRodape: 'Obrigado pela preferência! Volte sempre.',
+  impressaoAutomatica: false
+};
+
+const safeNum = (val, fallback = 0) => {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const safeArr = (val) => (Array.isArray(val) ? val : []);
+
+const formatBRL = (val) => {
+  return safeNum(val, 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+};
+
+const formatDateTime = (isoStr) => {
+  if (!isoStr) return '-';
+  try {
+    const d = new Date(isoStr);
+    if (Number.isNaN(d.getTime())) return String(isoStr);
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return String(isoStr);
+  }
+};
+
+const generateEAN13 = () => {
+  const prefix = '789';
+  let body = '';
+  for (let i = 0; i < 9; i++) {
+    body += Math.floor(Math.random() * 10);
+  }
+  const code12 = prefix + body;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const digit = parseInt(code12[i], 10) || 0;
+    sum += i % 2 === 0 ? digit : digit * 3;
+  }
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return code12 + checkDigit;
+};
+
+const getPublicCol = (colName) => {
+  if (!db) return null;
+  return collection(db, 'artifacts', appId, 'public', 'data', colName);
+};
+
+const getPublicDoc = (colName, docId) => {
+  if (!db) return null;
+  return doc(db, 'artifacts', appId, 'public', 'data', colName, docId);
+};
+
+// ============================================================================
+// 3. WRAPPER COM ERROR BOUNDARY
+// ============================================================================
 export default function App() {
-  const [firebaseUser, setFirebaseUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authError, setAuthError] = useState('');
+  return (
+    <ErrorBoundary>
+      <ErpPdvSystem />
+    </ErrorBoundary>
+  );
+}
 
-  // Sessão local por PIN (admin | staff | null)
-  const [role, setRole] = useState(null);
+// ============================================================================
+// 4. SISTEMA PRINCIPAL
+// ============================================================================
+function ErpPdvSystem() {
+  const [fbUser, setFbUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [firestoreError, setFirestoreError] = useState(firebaseInitError || '');
+
+  // Controle de Operador / PIN
+  const [currentOperator, setCurrentOperator] = useState(null);
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [selectedUserForPin, setSelectedUserForPin] = useState('');
 
-  // Navegação principal
-  const [activeTab, setActiveTab] = useState('pos'); // pos | inventory | online | finance | settings
-  const [toast, setToast] = useState(null);
+  // Navegação
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isStorefrontMode, setIsStorefrontMode] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Dados sincronizados em tempo real
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [products, setProducts] = useState([]);
-  const [sales, setSales] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  // Dados Persistentes
+  const [usuarios, setUsuarios] = useState([]);
+  const [storeConfig, setStoreConfig] = useState(DEFAULT_STORE_CONFIG);
+  const [produtos, setProdutos] = useState([]);
+  const [variacoes, setVariacoes] = useState([]);
+  const [vendas, setVendas] = useState([]);
+  const [caixas, setCaixas] = useState([]);
+  const [movimentacoesCaixa, setMovimentacoesCaixa] = useState([]);
+  const [despesas, setDespesas] = useState([]);
+  const [pedidosOnline, setPedidosOnline] = useState([]);
+  const [logsAuditoria, setLogsAuditoria] = useState([]);
 
-  // Carrinho PDV
-  const [cart, setCart] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('PIX');
-  const [saleChannel, setSaleChannel] = useState('PDV'); // PDV | Loja Virtual
-  const [customerName, setCustomerName] = useState('');
-
-  // Formulário de produto (Grade Tamanho/Cor + Código de Barras)
-  const [prodName, setProdName] = useState('');
-  const [prodPrice, setProdPrice] = useState('');
-  const [prodCost, setProdCost] = useState('');
-  const [prodBarcode, setProdBarcode] = useState(() => generateBarcode());
-  const [prodPublishedOnline, setProdPublishedOnline] = useState(true);
-  const [matrixSizes, setMatrixSizes] = useState(['P', 'M', 'G']);
-  const [matrixColors, setMatrixColors] = useState(['Preto', 'Branco']);
-  const [matrixQtyPerVariant, setMatrixQtyPerVariant] = useState('5');
-
-  // Lançamento financeiro manual
-  const [txType, setTxType] = useState('expense'); // income | expense
-  const [txDesc, setTxDesc] = useState('');
-  const [txAmount, setTxAmount] = useState('');
-
-  // Configurações editáveis
-  const [cfgForm, setCfgForm] = useState(DEFAULT_CONFIG);
+  // Notificações e Impressão
+  const [toasts, setToasts] = useState([]);
+  const [receiptToPrint, setReceiptToPrint] = useState(null);
 
   const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3200);
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((prev) => [...safeArr(prev), { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => safeArr(prev).filter((t) => t.id !== id));
+    }, 4500);
   };
 
-  // Autenticação anónima no Firebase
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setFirebaseUser(user);
-        setAuthLoading(false);
-      } else {
-        try {
-          const cred = await signInAnonymously(auth);
-          setFirebaseUser(cred.user);
-          setAuthError('');
-        } catch (err) {
-          console.error(err);
-          setAuthError('Falha ao autenticar no Firebase. Verifique se o login Anónimo está ativado.');
-        } finally {
-          setAuthLoading(false);
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Escuta em tempo real das coleções do Firestore após autenticado
-  useEffect(() => {
-    if (!firebaseUser) return;
-
-    const cfgRef = doc(db, 'settings', 'storeConfig');
-    const unsubCfg = onSnapshot(
-      cfgRef,
-      (snap) => {
-        if (snap.exists()) {
-          const merged = { ...DEFAULT_CONFIG, ...snap.data() };
-          setConfig(merged);
-          setCfgForm(merged);
-        } else {
-          setDoc(cfgRef, DEFAULT_CONFIG).catch(() => {});
-        }
-      },
-      (err) => console.error('Erro config:', err)
-    );
-
-    const unsubProducts = onSnapshot(
-      collection(db, 'products'),
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setProducts(list);
-      },
-      (err) => console.error('Erro produtos:', err)
-    );
-
-    const unsubSales = onSnapshot(
-      collection(db, 'sales'),
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setSales(list);
-      },
-      (err) => console.error('Erro vendas:', err)
-    );
-
-    const unsubTx = onSnapshot(
-      collection(db, 'transactions'),
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setTransactions(list);
-      },
-      (err) => console.error('Erro financeiro:', err)
-    );
-
-    return () => {
-      unsubCfg();
-      unsubProducts();
-      unsubSales();
-      unsubTx();
-    };
-  }, [firebaseUser]);
-
-  // Login por PIN
-  const handlePinSubmit = (e) => {
-    e.preventDefault();
-    if (pinInput === config.adminPin) {
-      setRole('admin');
-      setPinError('');
-      setPinInput('');
-      showToast('Acesso Administrador liberado');
-    } else if (pinInput === config.staffPin) {
-      setRole('staff');
-      setActiveTab('pos');
-      setPinError('');
-      setPinInput('');
-      showToast('Acesso Equipe (PDV) liberado');
+  const handleFirestoreError = (contextLabel, err) => {
+    console.error(`Erro Firestore [${contextLabel}]:`, err);
+    const code = err?.code || '';
+    if (code === 'permission-denied') {
+      setFirestoreError(
+        'Permissão negada no banco de dados (permission-denied). Verifique as regras de segurança do Firestore.'
+      );
+      showToast('Sem permissão no banco de dados para esta operação.', 'error');
+    } else if (code === 'unavailable' || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+      setFirestoreError('Conexão instável ou sem internet (unavailable). Alterações serão sincronizadas ao reconectar.');
+      showToast('Sem conexão com o banco de dados no momento.', 'error');
     } else {
-      setPinError('PIN inválido. Tente novamente.');
+      showToast(`Falha em ${contextLabel}: ${err?.message || 'erro inesperado'}.`, 'error');
     }
   };
 
-  // Filtragem de produtos no PDV e Loja Virtual
-  const filteredProducts = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.barcode?.toLowerCase().includes(q) ||
-        p.color?.toLowerCase().includes(q) ||
-        p.size?.toLowerCase().includes(q)
-    );
-  }, [products, searchTerm]);
+  const registrarAuditoria = async (acao, detalhes, operadorOverride = null) => {
+    if (!db || !fbUser) return;
+    const op = operadorOverride || currentOperator || { id: 'cliente-online', nome: 'Loja Virtual / Cliente' };
+    try {
+      const colRef = getPublicCol('auditoria');
+      if (!colRef) return;
+      await addDoc(colRef, {
+        acao: String(acao || 'Ação'),
+        detalhes: String(detalhes || ''),
+        usuarioId: String(op.id || 'desconhecido'),
+        usuarioNome: String(op.nome || 'Operador'),
+        dataHora: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error('Erro ao registrar auditoria:', err);
+    }
+  };
 
-  const onlineProducts = useMemo(
-    () => products.filter((p) => p.publishedOnline && Number(p.stock) > 0),
-    [products]
+  // ==========================================================================
+  // 5. AUTENTICAÇÃO RESILIENTE
+  // ==========================================================================
+  useEffect(() => {
+    if (!auth) {
+      setAuthReady(true);
+      setLoadingInitial(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const initAuth = async () => {
+      try {
+        await signInAnonymously(auth);
+      } catch (err) {
+        console.error('Erro na autenticação anônima:', err);
+        if (!cancelled) {
+          setFirestoreError('Falha na autenticação com o Firebase. Verifique se o login Anônimo está ativado.');
+        }
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
+    };
+
+    initAuth();
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        if (!cancelled) {
+          setFbUser(user);
+          setAuthReady(true);
+          if (user) {
+            setFirestoreError((prev) =>
+              prev && prev.includes('autenticação') ? '' : prev
+            );
+          }
+        }
+      },
+      (err) => {
+        console.error('onAuthStateChanged erro:', err);
+        if (!cancelled) setAuthReady(true);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  // ==========================================================================
+  // 6. SINCRONIZAÇÃO EM TEMPO REAL + INICIALIZAÇÃO SEGURA DE DADOS BASE
+  // ==========================================================================
+  useEffect(() => {
+    if (!authReady) return;
+    if (!db || !fbUser) {
+      setLoadingInitial(false);
+      return;
+    }
+
+    let usersLoaded = false;
+    let configLoaded = false;
+
+    const checkLoaded = () => {
+      if (usersLoaded && configLoaded) {
+        setLoadingInitial(false);
+      }
+    };
+
+    const configRef = getPublicDoc('configuracoes_loja', 'principal');
+    if (configRef) {
+      setDoc(configRef, DEFAULT_STORE_CONFIG, { merge: true }).catch((err) => {
+        console.error('Seed config falhou:', err);
+      });
+    }
+
+    const unsubUsuarios = onSnapshot(
+      getPublicCol('usuarios'),
+      async (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        setUsuarios(list);
+
+        if (!usersLoaded) {
+          usersLoaded = true;
+          if (list.length === 0) {
+            try {
+              const adminRef = getPublicDoc('usuarios', 'admin-demo-0000');
+              if (adminRef) {
+                await setDoc(
+                  adminRef,
+                  {
+                    nome: 'Administrador (Demo)',
+                    cargo: 'Administrador',
+                    pin: '0000',
+                    status: 'Ativo',
+                    isDemo: true,
+                    criadoEm: new Date().toISOString()
+                  },
+                  { merge: true }
+                );
+              }
+            } catch (seedErr) {
+              handleFirestoreError('criação do usuário demo inicial', seedErr);
+            }
+          }
+          checkLoaded();
+        }
+      },
+      (err) => {
+        usersLoaded = true;
+        handleFirestoreError('escuta de usuários', err);
+        checkLoaded();
+      }
+    );
+
+    const unsubConfig = onSnapshot(
+      getPublicDoc('configuracoes_loja', 'principal'),
+      (docSnap) => {
+        if (docSnap?.exists()) {
+          setStoreConfig((prev) => ({ ...DEFAULT_STORE_CONFIG, ...prev, ...docSnap.data() }));
+        }
+        configLoaded = true;
+        checkLoaded();
+      },
+      (err) => {
+        configLoaded = true;
+        handleFirestoreError('escuta de configurações', err);
+        checkLoaded();
+      }
+    );
+
+    const unsubProdutos = onSnapshot(
+      getPublicCol('produtos'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+        setProdutos(list);
+      },
+      (err) => handleFirestoreError('escuta de produtos', err)
+    );
+
+    const unsubVariacoes = onSnapshot(
+      getPublicCol('variacoes'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        setVariacoes(list);
+      },
+      (err) => handleFirestoreError('escuta de variações', err)
+    );
+
+    const unsubVendas = onSnapshot(
+      getPublicCol('vendas'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.dataHora || '').localeCompare(String(a.dataHora || '')));
+        setVendas(list);
+      },
+      (err) => handleFirestoreError('escuta de vendas', err)
+    );
+
+    const unsubCaixas = onSnapshot(
+      getPublicCol('caixas'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.aberturaData || '').localeCompare(String(a.aberturaData || '')));
+        setCaixas(list);
+      },
+      (err) => handleFirestoreError('escuta de caixas', err)
+    );
+
+    const unsubMovCaixa = onSnapshot(
+      getPublicCol('movimentacoes_caixa'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.dataHora || '').localeCompare(String(a.dataHora || '')));
+        setMovimentacoesCaixa(list);
+      },
+      (err) => handleFirestoreError('escuta de movimentações do caixa', err)
+    );
+
+    const unsubDespesas = onSnapshot(
+      getPublicCol('despesas'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+        setDespesas(list);
+      },
+      (err) => handleFirestoreError('escuta de despesas', err)
+    );
+
+    const unsubPedidos = onSnapshot(
+      getPublicCol('pedidos_online'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.dataHora || '').localeCompare(String(a.dataHora || '')));
+        setPedidosOnline(list);
+      },
+      (err) => handleFirestoreError('escuta de pedidos online', err)
+    );
+
+    const unsubAuditoria = onSnapshot(
+      getPublicCol('auditoria'),
+      (snapshot) => {
+        const list = safeArr(snapshot?.docs).map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => String(b.dataHora || '').localeCompare(String(a.dataHora || '')));
+        setLogsAuditoria(list.slice(0, 100));
+      },
+      (err) => handleFirestoreError('escuta de auditoria', err)
+    );
+
+    return () => {
+      unsubUsuarios();
+      unsubConfig();
+      unsubProdutos();
+      unsubVariacoes();
+      unsubVendas();
+      unsubCaixas();
+      unsubMovCaixa();
+      unsubDespesas();
+      unsubPedidos();
+      unsubAuditoria();
+    };
+  }, [authReady, fbUser]);
+
+  useEffect(() => {
+    if (!currentOperator) return;
+    const updated = safeArr(usuarios).find((u) => u.id === currentOperator.id);
+    if (updated) {
+      if (updated.status === 'Bloqueado') {
+        setCurrentOperator(null);
+        showToast('Seu acesso foi bloqueado pelo Administrador.', 'error');
+      } else {
+        setCurrentOperator(updated);
+      }
+    }
+  }, [usuarios, currentOperator]);
+
+  const caixaAberto = useMemo(() => {
+    return safeArr(caixas).find((c) => c && c.status === 'Aberto') || null;
+  }, [caixas]);
+
+  const isAdmin = currentOperator?.cargo === 'Administrador';
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'configuracoes') {
+      setActiveTab('dashboard');
+    }
+  }, [isAdmin, activeTab]);
+
+  const triggerThermalPrint = (receiptData) => {
+    if (!receiptData) return;
+    setReceiptToPrint(receiptData);
+    setTimeout(() => {
+      try {
+        if (typeof window !== 'undefined' && typeof window.print === 'function') {
+          window.print();
+        }
+      } catch (err) {
+        console.error('Erro ao disparar impressão:', err);
+      }
+    }, 250);
+  };
+
+  if (loadingInitial) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-bold tracking-tight">Carregando Sistema Comercial...</h2>
+        <p className="text-slate-400 text-sm mt-1">Conectando ao banco de dados e sincronizando permissões</p>
+      </div>
+    );
+  }
+
+  if (isStorefrontMode) {
+    return (
+      <>
+        {firestoreError && (
+          <div className="bg-amber-900 text-amber-100 text-xs px-4 py-2 text-center flex items-center justify-center gap-2">
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span>{firestoreError}</span>
+          </div>
+        )}
+        <StorefrontView
+          storeConfig={storeConfig}
+          produtos={produtos}
+          variacoes={variacoes}
+          onBackToErp={() => setIsStorefrontMode(false)}
+          showToast={showToast}
+          registrarAuditoria={registrarAuditoria}
+        />
+        <ToastContainer toasts={toasts} />
+      </>
+    );
+  }
+
+  if (!currentOperator) {
+    const activeUsers = safeArr(usuarios).filter((u) => u && u.status === 'Ativo');
+    const demoUserExists = activeUsers.some((u) => u.pin === '0000' && u.isDemo);
+
+    const handlePinDigit = (digit) => {
+      if (pinInput.length >= 4) return;
+      const nextPin = pinInput + digit;
+      setPinInput(nextPin);
+      setLoginError('');
+
+      if (nextPin.length === 4) {
+        const matched = selectedUserForPin
+          ? activeUsers.find((u) => u.id === selectedUserForPin && u.pin === nextPin)
+          : activeUsers.find((u) => u.pin === nextPin);
+
+        if (matched) {
+          setCurrentOperator(matched);
+          setPinInput('');
+          setLoginError('');
+          showToast(`Bem-vindo(a), ${matched.nome}!`, 'success');
+          registrarAuditoria(
+            'Login no Sistema',
+            `Operador ${matched.nome} (${matched.cargo}) acessou o sistema.`,
+            matched
+          );
+        } else {
+          const blockedMatch = safeArr(usuarios).find((u) => u.pin === nextPin && u.status === 'Bloqueado');
+          if (blockedMatch) {
+            setLoginError('Usuário bloqueado. Contate o Administrador.');
+          } else {
+            setLoginError('PIN inválido ou usuário não encontrado.');
+          }
+          setTimeout(() => setPinInput(''), 550);
+        }
+      }
+    };
+
+    const handleBackspace = () => {
+      setPinInput((prev) => prev.slice(0, -1));
+      setLoginError('');
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col justify-between p-4 sm:p-6">
+        <div className="max-w-5xl w-full mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {storeConfig.logoUrl ? (
+              <img
+                src={storeConfig.logoUrl}
+                alt="Logo"
+                className="w-10 h-10 rounded-xl object-cover bg-white p-0.5"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center font-bold text-lg shadow-lg">
+                <Store className="w-5 h-5 text-white" />
+              </div>
+            )}
+            <div>
+              <h1 className="font-bold text-lg leading-tight">{storeConfig.nomeFantasia}</h1>
+              <div className="flex items-center gap-2 text-xs text-emerald-400">
+                <span className={`w-2 h-2 rounded-full ${db && fbUser ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                {db && fbUser ? 'Banco em Nuvem Conectado' : 'Modo Local / Reconectando'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsStorefrontMode(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium transition-all"
+          >
+            <ShoppingBag className="w-4 h-4 text-emerald-400" />
+            Abrir Loja Virtual (Cliente)
+          </button>
+        </div>
+
+        {firestoreError && (
+          <div className="max-w-md w-full mx-auto mt-4 p-3 rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-200 text-xs flex items-start gap-2.5">
+            <WifiOff className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span>{firestoreError}</span>
+          </div>
+        )}
+
+        <div className="max-w-md w-full mx-auto my-6 bg-slate-900/95 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+          <div className="text-center mb-6">
+            <div className="w-14 h-14 bg-slate-800 border border-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Lock className="w-7 h-7 text-emerald-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Acesso Rápido por PIN</h2>
+            <p className="text-slate-400 text-sm mt-1">Digite seu PIN numérico de 4 dígitos</p>
+          </div>
+
+          {demoUserExists && (
+            <div className="mb-5 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold block text-amber-300">Demonstração Inicial</span>
+                Use o PIN <strong className="font-mono bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-200">0000</strong> para o Administrador inicial. Crie sua equipe e altere este PIN após o primeiro acesso.
+              </div>
+            </div>
+          )}
+
+          {activeUsers.length > 1 && (
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                Selecionar Funcionário (Opcional)
+              </label>
+              <select
+                value={selectedUserForPin}
+                onChange={(e) => {
+                  setSelectedUserForPin(e.target.value);
+                  setPinInput('');
+                  setLoginError('');
+                }}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Qualquer usuário ativo com este PIN</option>
+                {activeUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome} ({u.cargo})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex justify-center gap-4 my-6">
+            {[0, 1, 2, 3].map((idx) => (
+              <div
+                key={idx}
+                className={`w-5 h-5 rounded-full border-2 transition-all duration-150 ${
+                  pinInput.length > idx
+                    ? 'bg-emerald-500 border-emerald-400 scale-110 shadow-md shadow-emerald-500/40'
+                    : 'bg-slate-800 border-slate-600'
+                }`}
+              />
+            ))}
+          </div>
+
+          {loginError && (
+            <p className="text-center text-rose-400 text-xs font-medium mb-4 bg-rose-500/10 py-2 px-3 rounded-xl border border-rose-500/20">
+              {loginError}
+            </p>
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
+              <button
+                key={num}
+                type="button"
+                onClick={() => handlePinDigit(num)}
+                className="h-14 rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700/80 text-xl font-bold text-white transition-all"
+              >
+                {num}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setPinInput('');
+                setLoginError('');
+              }}
+              className="h-14 rounded-2xl bg-slate-800/50 hover:bg-slate-800 text-xs font-semibold text-slate-400 transition-all"
+            >
+              Limpar
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePinDigit('0')}
+              className="h-14 rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700/80 text-xl font-bold text-white transition-all"
+            >
+              0
+            </button>
+            <button
+              type="button"
+              onClick={handleBackspace}
+              className="h-14 rounded-2xl bg-slate-800/50 hover:bg-slate-800 text-sm font-semibold text-slate-300 transition-all"
+            >
+              ⌫
+            </button>
+          </div>
+        </div>
+
+        <div className="text-center text-xs text-slate-500">
+          Gestão Comercial ERP • PDV • Grade de Estoque • Loja Virtual Sincronizada
+        </div>
+        <ToastContainer toasts={toasts} />
+      </div>
+    );
+  }
+
+  const navItems = [
+    { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard, adminOnly: false },
+    { id: 'pdv', label: 'Frente de Caixa (PDV)', icon: ShoppingCart, adminOnly: false },
+    { id: 'produtos', label: 'Produtos e Estoque', icon: Package, adminOnly: false },
+    { id: 'financeiro', label: 'Controle Financeiro', icon: DollarSign, adminOnly: false },
+    {
+      id: 'pedidos_online',
+      label: 'Pedidos Online',
+      icon: ShoppingBag,
+      adminOnly: false,
+      badge: safeArr(pedidosOnline).filter((p) => p?.status === 'Pendente').length
+    },
+    { id: 'usuarios', label: 'Equipe e Acessos', icon: Users, adminOnly: false },
+    { id: 'configuracoes', label: 'Configurações da Loja', icon: Settings, adminOnly: true },
+    { id: 'status_sistema', label: 'Status e Integrações', icon: Activity, adminOnly: false }
+  ];
+
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col md:flex-row">
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #thermal-print-area, #thermal-print-area * {
+            visibility: visible !important;
+          }
+          #thermal-print-area {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: ${storeConfig.larguraCupom === '58mm' ? '58mm' : '80mm'} !important;
+            padding: 4mm !important;
+            background: #fff !important;
+            color: #000 !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+            z-index: 99999 !important;
+          }
+        }
+      `}</style>
+
+      {receiptToPrint && (
+        <div id="thermal-print-area" className="hidden print:block">
+          <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
+            <strong style={{ fontSize: '13px', display: 'block' }}>{storeConfig.nomeFantasia}</strong>
+            <span>{storeConfig.razaoSocial}</span><br />
+            <span>CNPJ: {storeConfig.cnpj} | IE: {storeConfig.inscricaoEstadual}</span><br />
+            <span>{storeConfig.endereco}</span><br />
+            <span>Tel: {storeConfig.telefone}</span>
+          </div>
+          <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '6px' }}>
+            COMPROVANTE NÃO FISCAL<br />
+            <span style={{ fontSize: '9px', fontWeight: 'normal' }}>(Documento interno - sem validade fiscal SEFAZ)</span>
+          </div>
+          <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
+            <div>Data: {formatDateTime(receiptToPrint.dataHora)}</div>
+            <div>Código: #{String(receiptToPrint.id || '').slice(-6).toUpperCase()}</div>
+            <div>Responsável: {receiptToPrint.usuarioNome || currentOperator.nome}</div>
+            {receiptToPrint.clienteNome && <div>Cliente: {receiptToPrint.clienteNome}</div>}
+          </div>
+          <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
+            {safeArr(receiptToPrint.itens).map((item, idx) => (
+              <div key={idx} style={{ marginBottom: '4px' }}>
+                <div>{item.produtoNome} ({item.tamanho}/{item.cor})</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{safeNum(item.quantidade)}x {formatBRL(item.precoUnitario)}</span>
+                  <strong>{formatBRL(item.subtotal)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Subtotal:</span>
+              <span>{formatBRL(receiptToPrint.subtotal ?? receiptToPrint.total)}</span>
+            </div>
+            {safeNum(receiptToPrint.desconto) > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Desconto:</span>
+                <span>-{formatBRL(receiptToPrint.desconto)}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', marginTop: '4px' }}>
+              <span>TOTAL:</span>
+              <span>{formatBRL(receiptToPrint.total)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+              <span>Pagamento:</span>
+              <span>{receiptToPrint.formaPagamento}</span>
+            </div>
+            {receiptToPrint.formaPagamento === 'Dinheiro' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Recebido:</span>
+                  <span>{formatBRL(receiptToPrint.valorRecebido)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Troco:</span>
+                  <span>{formatBRL(receiptToPrint.troco)}</span>
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: '8px' }}>
+            {storeConfig.mensagemRodape}
+          </div>
+        </div>
+      )}
+
+      <aside className="hidden md:flex md:w-64 lg:w-72 bg-slate-950 text-slate-200 flex-col justify-between shrink-0 border-r border-slate-800">
+        <div>
+          <div className="p-5 border-b border-slate-800/80 flex items-center gap-3">
+            {storeConfig.logoUrl ? (
+              <img
+                src={storeConfig.logoUrl}
+                alt="Logo"
+                className="w-10 h-10 rounded-xl object-cover bg-white p-0.5 shrink-0"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
+                <Store className="w-5 h-5 text-white" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <h1 className="font-bold text-white text-sm truncate">{storeConfig.nomeFantasia}</h1>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Sincronizado
+              </span>
+            </div>
+          </div>
+
+          <nav className="p-3 space-y-1">
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:bg-slate-900 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    {item.label}
+                  </span>
+                  {item.badge > 0 && (
+                    <span className="bg-amber-500 text-slate-950 text-xs font-bold px-2 py-0.5 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            <div className="pt-3 mt-3 border-t border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setIsStorefrontMode(true)}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 transition-all"
+              >
+                <span className="flex items-center gap-3">
+                  <ExternalLink className="w-4 h-4" />
+                  Ver Loja Virtual
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </nav>
+        </div>
+
+        <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{currentOperator.nome}</p>
+              <span
+                className={`inline-block text-[11px] px-2 py-0.5 rounded-md font-medium mt-0.5 ${
+                  isAdmin ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {currentOperator.cargo}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentOperator(null);
+                setPinInput('');
+              }}
+              title="Bloquear / Trocar Operador"
+              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-600/20 text-slate-400 hover:text-rose-400 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="text-[11px] flex items-center justify-between text-slate-400">
+            <span>Status do Caixa:</span>
+            {caixaAberto ? (
+              <span className="text-emerald-400 font-semibold">● Aberto</span>
+            ) : (
+              <span className="text-rose-400 font-semibold">● Fechado</span>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      <header className="md:hidden bg-slate-950 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-2 rounded-xl bg-slate-900 text-slate-200"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          <div>
+            <h1 className="font-bold text-sm leading-tight">{storeConfig.nomeFantasia}</h1>
+            <p className="text-[11px] text-slate-400">
+              {currentOperator.nome} ({currentOperator.cargo})
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsStorefrontMode(true)}
+            className="p-2 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-600/30"
+            title="Loja Virtual"
+          >
+            <ShoppingBag className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentOperator(null)}
+            className="p-2 rounded-xl bg-slate-900 text-rose-400"
+            title="Trocar Operador"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)}>
+          <div
+            className="w-72 bg-slate-950 h-full p-4 flex flex-col justify-between border-r border-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1 mt-2">
+              {visibleNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium ${
+                      isActive ? 'bg-emerald-600 text-white' : 'text-slate-300 hover:bg-slate-900'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Icon className="w-4 h-4" />
+                      {item.label}
+                    </span>
+                    {item.badge > 0 && (
+                      <span className="bg-amber-500 text-slate-950 text-xs font-bold px-2 py-0.5 rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setIsStorefrontMode(true);
+              }}
+              className="w-full py-3 px-4 rounded-xl bg-emerald-600 text-white font-semibold text-sm flex items-center justify-center gap-2"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              Abrir Loja Virtual
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        {firestoreError && (
+          <div className="mb-4 bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-xs text-rose-900 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <WifiOff className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{firestoreError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFirestoreError('')}
+              className="text-rose-700 font-bold hover:underline shrink-0"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
+
+        {currentOperator.isDemo && (
+          <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-900">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Acesso de <strong>Demonstração Inicial (PIN 0000)</strong>. Cadastre sua equipe e altere este PIN em <strong>Equipe e Acessos</strong>.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('usuarios')}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 transition-colors"
+            >
+              Gerenciar Usuários
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'dashboard' && (
+          <DashboardView
+            vendas={vendas}
+            variacoes={variacoes}
+            despesas={despesas}
+            pedidosOnline={pedidosOnline}
+            logsAuditoria={logsAuditoria}
+            setActiveTab={setActiveTab}
+          />
+        )}
+
+        {activeTab === 'pdv' && (
+          <PdvView
+            produtos={produtos}
+            variacoes={variacoes}
+            vendas={vendas}
+            caixaAberto={caixaAberto}
+            currentOperator={currentOperator}
+            storeConfig={storeConfig}
+            showToast={showToast}
+            registrarAuditoria={registrarAuditoria}
+            triggerThermalPrint={triggerThermalPrint}
+            setActiveTab={setActiveTab}
+            onDbError={handleFirestoreError}
+          />
+        )}
+
+        {activeTab === 'produtos' && (
+          <ProdutosEstoqueView
+            produtos={produtos}
+            variacoes={variacoes}
+            isAdmin={isAdmin}
+            currentOperator={currentOperator}
+            showToast={showToast}
+            registrarAuditoria={registrarAuditoria}
+            onDbError={handleFirestoreError}
+          />
+        )}
+
+        {activeTab === 'financeiro' && (
+          <FinanceiroView
+            caixas={caixas}
+            caixaAberto={caixaAberto}
+            movimentacoesCaixa={movimentacoesCaixa}
+            vendas={vendas}
+            despesas={despesas}
+            currentOperator={currentOperator}
+            showToast={showToast}
+            registrarAuditoria={registrarAuditoria}
+            onDbError={handleFirestoreError}
+          />
+        )}
+
+        {activeTab === 'pedidos_online' && (
+          <PedidosOnlineAdminView
+            pedidosOnline={pedidosOnline}
+            variacoes={variacoes}
+            currentOperator={currentOperator}
+            showToast={showToast}
+            registrarAuditoria={registrarAuditoria}
+            triggerThermalPrint={triggerThermalPrint}
+            onDbError={handleFirestoreError}
+          />
+        )}
+
+        {activeTab === 'usuarios' && (
+          <UsuariosView
+            usuarios={usuarios}
+            currentOperator={currentOperator}
+            isAdmin={isAdmin}
+            showToast={showToast}
+            registrarAuditoria={registrarAuditoria}
+            onDbError={handleFirestoreError}
+          />
+        )}
+
+        {activeTab === 'configuracoes' && isAdmin && (
+          <ConfiguracoesLojaView
+            storeConfig={storeConfig}
+            currentOperator={currentOperator}
+            showToast={showToast}
+            registrarAuditoria={registrarAuditoria}
+            onDbError={handleFirestoreError}
+          />
+        )}
+
+        {activeTab === 'status_sistema' && <StatusSistemaView />}
+      </main>
+
+      <ToastContainer toasts={toasts} />
+    </div>
+  );
+}
+
+// ============================================================================
+// 11. VISÃO GERAL / DASHBOARD
+// ============================================================================
+function DashboardView({
+  vendas,
+  variacoes,
+  despesas,
+  pedidosOnline,
+  logsAuditoria,
+  setActiveTab
+}) {
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const vendasValidas = useMemo(
+    () => safeArr(vendas).filter((v) => v && v.status !== 'Cancelada' && v.status !== 'Devolvida'),
+    [vendas]
   );
 
-  // Carrinho
-  const addToCart = (product) => {
-    const currentStock = Number(product.stock || 0);
-    if (currentStock <= 0) {
-      showToast('Produto sem estoque disponível', 'error');
+  const vendasHoje = useMemo(
+    () => vendasValidas.filter((v) => String(v.dataHora || '').startsWith(hoje)),
+    [vendasValidas, hoje]
+  );
+
+  const faturamentoHoje = vendasHoje.reduce((acc, v) => acc + safeNum(v.total), 0);
+  const faturamentoTotal = vendasValidas.reduce((acc, v) => acc + safeNum(v.total), 0);
+  const lucroBrutoTotal = vendasValidas.reduce((acc, v) => acc + safeNum(v.lucroEstimado), 0);
+  const totalDespesas = safeArr(despesas).reduce((acc, d) => acc + safeNum(d.valor), 0);
+  const lucroLiquido = lucroBrutoTotal - totalDespesas;
+
+  const estoqueBaixo = useMemo(() => {
+    return safeArr(variacoes).filter((v) => safeNum(v?.estoque) <= safeNum(v?.estoqueMinimo, 2));
+  }, [variacoes]);
+
+  const pedidosPendentes = safeArr(pedidosOnline).filter((p) => p?.status === 'Pendente');
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Painel de Gestão Comercial</h2>
+          <p className="text-sm text-slate-500">Resumo operacional, financeiro e sincronização em tempo real</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('pdv')}
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center gap-2 shadow-sm"
+          >
+            <ShoppingCart className="w-4 h-4" />
+            Abrir Frente de Caixa
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('produtos')}
+            className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-sm flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Produto
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+            <span>Vendas Hoje</span>
+            <span className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+              <DollarSign className="w-4 h-4" />
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 mt-2">{formatBRL(faturamentoHoje)}</p>
+          <p className="text-xs text-slate-500 mt-1">{vendasHoje.length} venda(s) hoje</p>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+            <span>Lucro Líquido Estimado</span>
+            <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+              <ArrowUpRight className="w-4 h-4" />
+            </span>
+          </div>
+          <p className={`text-2xl font-bold mt-2 ${lucroLiquido >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+            {formatBRL(lucroLiquido)}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Bruto {formatBRL(faturamentoTotal)} - Despesas {formatBRL(totalDespesas)}
+          </p>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+            <span>Pedidos Online</span>
+            <span className="p-2 rounded-lg bg-amber-50 text-amber-600">
+              <ShoppingBag className="w-4 h-4" />
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 mt-2">{pedidosPendentes.length} pendente(s)</p>
+          <p className="text-xs text-slate-500 mt-1">{safeArr(pedidosOnline).length} pedido(s) na vitrine</p>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
+            <span>Alerta de Estoque</span>
+            <span className="p-2 rounded-lg bg-rose-50 text-rose-600">
+              <Package className="w-4 h-4" />
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 mt-2">{estoqueBaixo.length} variação(ões)</p>
+          <p className="text-xs text-slate-500 mt-1">De {safeArr(variacoes).length} variações cadastradas</p>
+        </div>
+      </div>
+
+      <div className="bg-slate-900 text-slate-200 rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
+          <div>
+            <h3 className="font-semibold text-white text-sm">Transparência Operacional e Integrações</h3>
+            <p className="text-xs text-slate-400">
+              Banco em nuvem, estoque, PDV, financeiro e loja virtual ativos. Emissão NFC-e/SEFAZ e gateways externos exigem integração própria.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('status_sistema')}
+          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-400 border border-slate-700"
+        >
+          Ver Status Técnico
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              Variações com Estoque Baixo / Zerado
+            </h3>
+            <button
+              type="button"
+              onClick={() => setActiveTab('produtos')}
+              className="text-xs font-semibold text-emerald-600 hover:underline"
+            >
+              Ver Estoque
+            </button>
+          </div>
+          {estoqueBaixo.length === 0 ? (
+            <p className="text-sm text-slate-500 py-6 text-center">
+              Nenhuma variação com estoque crítico no momento.
+            </p>
+          ) : (
+            <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+              {estoqueBaixo.map((v) => (
+                <div key={v.id} className="py-2.5 flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-semibold text-slate-800">{v.produtoNome}</p>
+                    <p className="text-xs text-slate-500">
+                      Tam: <strong>{v.tamanho}</strong> • Cor: <strong>{v.cor}</strong> • SKU: {v.sku || '-'}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      safeNum(v.estoque) === 0
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {safeNum(v.estoque)} un
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-emerald-600" />
+            Últimas Atividades (Auditoria)
+          </h3>
+          {safeArr(logsAuditoria).length === 0 ? (
+            <p className="text-sm text-slate-500 py-6 text-center">Nenhum registro de auditoria ainda.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+              {safeArr(logsAuditoria).slice(0, 8).map((log) => (
+                <div key={log.id} className="py-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">{log.acao}</span>
+                    <span className="text-slate-400">{formatDateTime(log.dataHora)}</span>
+                  </div>
+                  <p className="text-slate-600 mt-0.5">{log.detalhes}</p>
+                  <span className="text-[11px] text-slate-400">Por: {log.usuarioNome}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ============================================================================
+// 12. FRENTE DE CAIXA (PDV) COM GRADE, CÓDIGO DE BARRAS E IMPRESSÃO TÉRMICA
+// ============================================================================
+function PdvView({
+  produtos,
+  variacoes,
+  vendas,
+  caixaAberto,
+  currentOperator,
+  storeConfig,
+  showToast,
+  registrarAuditoria,
+  triggerThermalPrint,
+  setActiveTab,
+  onDbError
+}) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [cart, setCart] = useState([]);
+  const [desconto, setDesconto] = useState(0);
+  const [formaPagamento, setFormaPagamento] = useState('PIX');
+  const [valorRecebido, setValorRecebido] = useState('');
+  const [clienteNome, setClienteNome] = useState('');
+  const [clienteDoc, setClienteDoc] = useState('');
+  const [processandoVenda, setProcessandoVenda] = useState(false);
+
+  const [selectedProdutoForMatrix, setSelectedProdutoForMatrix] = useState(null);
+  const [showHistoricoVendas, setShowHistoricoVendas] = useState(false);
+
+  const produtosAtivos = useMemo(
+    () => safeArr(produtos).filter((p) => p && p.ativo !== false),
+    [produtos]
+  );
+
+  const variacoesPorProduto = useMemo(() => {
+    const map = {};
+    for (const v of safeArr(variacoes)) {
+      if (!v || !v.produtoId) continue;
+      if (!map[v.produtoId]) map[v.produtoId] = [];
+      map[v.produtoId].push(v);
+    }
+    return map;
+  }, [variacoes]);
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      const term = searchTerm.trim().toLowerCase();
+      if (!term) return;
+
+      const exactVar = safeArr(variacoes).find(
+        (v) =>
+          String(v.codigoBarras || '').toLowerCase() === term ||
+          String(v.sku || '').toLowerCase() === term
+      );
+      if (exactVar) {
+        const prod = produtosAtivos.find((p) => p.id === exactVar.produtoId);
+        if (prod) {
+          addToCart(prod, exactVar);
+          setSearchTerm('');
+          return;
+        }
+      }
+
+      const exactProd = produtosAtivos.find(
+        (p) => String(p.codigoBarras || '').toLowerCase() === term
+      );
+      if (exactProd) {
+        handleSelectProduto(exactProd);
+        setSearchTerm('');
+      }
+    }
+  };
+
+  const filteredProdutos = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return produtosAtivos;
+    return produtosAtivos.filter((p) => {
+      const matchProd =
+        String(p.nome || '').toLowerCase().includes(term) ||
+        String(p.categoria || '').toLowerCase().includes(term) ||
+        String(p.codigoBarras || '').toLowerCase().includes(term);
+      const vars = variacoesPorProduto[p.id] || [];
+      const matchVar = vars.some(
+        (v) =>
+          String(v.codigoBarras || '').toLowerCase().includes(term) ||
+          String(v.sku || '').toLowerCase().includes(term) ||
+          String(v.cor || '').toLowerCase().includes(term) ||
+          String(v.tamanho || '').toLowerCase().includes(term)
+      );
+      return matchProd || matchVar;
+    });
+  }, [produtosAtivos, variacoesPorProduto, searchTerm]);
+
+  const handleSelectProduto = (prod) => {
+    const vars = variacoesPorProduto[prod.id] || [];
+    if (vars.length === 1) {
+      addToCart(prod, vars[0]);
+    } else if (vars.length > 1) {
+      setSelectedProdutoForMatrix(prod);
+    } else {
+      showToast('Este produto não possui variações cadastradas em estoque.', 'error');
+    }
+  };
+
+  const addToCart = (prod, variacao) => {
+    if (!variacao) return;
+    const estoqueDisp = safeNum(variacao.estoque);
+    if (estoqueDisp <= 0) {
+      showToast(`Sem estoque para ${prod.nome} (${variacao.tamanho}/${variacao.cor}).`, 'error');
       return;
     }
 
     setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
-      if (existing) {
-        if (existing.qty + 1 > currentStock) {
-          showToast('Quantidade máxima em estoque atingida', 'error');
-          return prev;
+      const list = safeArr(prev);
+      const idx = list.findIndex((item) => item.variacaoId === variacao.id);
+      const precoUnit = safeNum(variacao.precoVenda ?? prod.precoVenda);
+      const custoUnit = safeNum(variacao.precoCusto ?? prod.precoCusto);
+
+      if (idx >= 0) {
+        const atual = list[idx];
+        const novaQtd = atual.quantidade + 1;
+        if (novaQtd > estoqueDisp) {
+          showToast(`Estoque máximo disponível: ${estoqueDisp} un.`, 'error');
+          return list;
         }
-        return prev.map((item) =>
-          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
-        );
+        const copia = [...list];
+        copia[idx] = {
+          ...atual,
+          quantidade: novaQtd,
+          subtotal: novaQtd * atual.precoUnitario
+        };
+        return copia;
       }
+
       return [
-        ...prev,
+        ...list,
         {
-          id: product.id,
-          name: product.name,
-          size: product.size || '-',
-          color: product.color || '-',
-          barcode: product.barcode || '',
-          price: Number(product.price || 0),
-          qty: 1,
-          maxStock: currentStock,
-        },
+          variacaoId: variacao.id,
+          produtoId: prod.id,
+          produtoNome: prod.nome,
+          tamanho: variacao.tamanho || 'Único',
+          cor: variacao.cor || 'Padrão',
+          sku: variacao.sku || '',
+          codigoBarras: variacao.codigoBarras || prod.codigoBarras || '',
+          quantidade: 1,
+          precoUnitario: precoUnit,
+          precoCusto: custoUnit,
+          subtotal: precoUnit
+        }
       ];
     });
+
+    setSelectedProdutoForMatrix(null);
+    showToast(`${prod.nome} (${variacao.tamanho}/${variacao.cor}) adicionado.`, 'success');
   };
 
-  const updateCartQty = (id, delta) => {
+  const updateCartQty = (variacaoId, novaQtd) => {
+    const vObj = safeArr(variacoes).find((v) => v.id === variacaoId);
+    const maxEstoque = vObj ? safeNum(vObj.estoque) : 9999;
+
+    if (novaQtd <= 0) {
+      setCart((prev) => safeArr(prev).filter((i) => i.variacaoId !== variacaoId));
+      return;
+    }
+
+    if (novaQtd > maxEstoque) {
+      showToast(`Limite de estoque: ${maxEstoque} unidade(s).`, 'error');
+      return;
+    }
+
     setCart((prev) =>
-      prev
-        .map((item) => {
-          if (item.id !== id) return item;
-          const nextQty = item.qty + delta;
-          if (nextQty <= 0) return null;
-          if (nextQty > item.maxStock) {
-            showToast('Limite do estoque atingido', 'error');
-            return item;
-          }
-          return { ...item, qty: nextQty };
-        })
-        .filter(Boolean)
+      safeArr(prev).map((item) =>
+        item.variacaoId === variacaoId
+          ? { ...item, quantidade: novaQtd, subtotal: novaQtd * item.precoUnitario }
+          : item
+      )
     );
   };
 
-  const cartTotal = useMemo(
-    () => cart.reduce((acc, item) => acc + item.price * item.qty, 0),
+  const subtotalCarrinho = useMemo(
+    () => safeArr(cart).reduce((acc, item) => acc + safeNum(item.subtotal), 0),
     [cart]
   );
 
-  // Finalizar venda e sincronizar estoque + financeiro
-  const handleCheckout = async (channelOverride = null) => {
-    if (cart.length === 0) {
-      showToast('Adicione itens ao carrinho antes de finalizar', 'error');
+  const descontoVal = Math.max(0, Math.min(subtotalCarrinho, safeNum(desconto)));
+  const totalVenda = Math.max(0, subtotalCarrinho - descontoVal);
+  const recebidoVal = safeNum(valorRecebido);
+  const trocoVal = formaPagamento === 'Dinheiro' ? Math.max(0, recebidoVal - totalVenda) : 0;
+
+  const handleFinalizarVenda = async (e) => {
+    e.preventDefault();
+    if (!caixaAberto) {
+      showToast('Abra o Caixa antes de registrar uma venda!', 'error');
+      return;
+    }
+    if (safeArr(cart).length === 0) {
+      showToast('Adicione ao menos um item ao carrinho.', 'error');
+      return;
+    }
+    if (formaPagamento === 'Dinheiro' && recebidoVal < totalVenda) {
+      showToast('Valor recebido em dinheiro é menor que o total da venda.', 'error');
       return;
     }
 
-    const activeChannel = channelOverride || saleChannel;
-
+    setProcessandoVenda(true);
     try {
       for (const item of cart) {
-        const prodDoc = doc(db, 'products', item.id);
-        const newStock = Math.max(0, Number(item.maxStock) - Number(item.qty));
-        await updateDoc(prodDoc, { stock: newStock });
+        const vAtual = safeArr(variacoes).find((v) => v.id === item.variacaoId);
+        const estoqueAtual = vAtual ? safeNum(vAtual.estoque) : 0;
+        const novoEstoque = Math.max(0, estoqueAtual - safeNum(item.quantidade));
+        await updateDoc(getPublicDoc('variacoes', item.variacaoId), {
+          estoque: novoEstoque
+        });
       }
 
-      await addDoc(collection(db, 'sales'), {
-        items: cart,
-        total: cartTotal,
-        paymentMethod,
-        channel: activeChannel,
-        customerName: customerName.trim() || 'Cliente Balcão',
-        operatorRole: role,
-        createdAt: serverTimestamp(),
+      const custoTotal = safeArr(cart).reduce(
+        (acc, i) => acc + safeNum(i.precoCusto) * safeNum(i.quantidade),
+        0
+      );
+      const lucroEstimado = totalVenda - custoTotal;
+      const agoraIso = new Date().toISOString();
+
+      const vendaPayload = {
+        caixaId: caixaAberto.id,
+        usuarioId: currentOperator.id,
+        usuarioNome: currentOperator.nome,
+        clienteNome: clienteNome.trim() || 'Consumidor Final',
+        clienteDoc: clienteDoc.trim(),
+        itens: cart,
+        subtotal: subtotalCarrinho,
+        desconto: descontoVal,
+        total: totalVenda,
+        custoTotal,
+        lucroEstimado,
+        formaPagamento,
+        valorRecebido: formaPagamento === 'Dinheiro' ? recebidoVal : totalVenda,
+        troco: trocoVal,
+        origem: 'PDV',
+        status: 'Concluída',
+        dataHora: agoraIso
+      };
+
+      const vendaDocRef = await addDoc(getPublicCol('vendas'), vendaPayload);
+
+      await addDoc(getPublicCol('movimentacoes_caixa'), {
+        caixaId: caixaAberto.id,
+        tipo: 'Venda',
+        formaPagamento,
+        valor: totalVenda,
+        observacao: `Venda PDV #${vendaDocRef.id.slice(-6).toUpperCase()} - ${vendaPayload.clienteNome}`,
+        usuarioId: currentOperator.id,
+        usuarioNome: currentOperator.nome,
+        dataHora: agoraIso
       });
 
-      await addDoc(collection(db, 'transactions'), {
-        type: 'income',
-        description: `Venda ${activeChannel} (${paymentMethod}) - ${customerName.trim() || 'Consumidor'}`,
-        amount: cartTotal,
-        createdAt: serverTimestamp(),
-      });
+      await registrarAuditoria(
+        'Venda Finalizada (PDV)',
+        `Venda #${vendaDocRef.id.slice(-6).toUpperCase()} no valor de ${formatBRL(totalVenda)} (${formaPagamento}).`
+      );
+
+      const vendaCompleta = { id: vendaDocRef.id, ...vendaPayload };
+      showToast(`Venda de ${formatBRL(totalVenda)} finalizada com sucesso!`, 'success');
 
       setCart([]);
-      setCustomerName('');
-      showToast(`Venda de ${config.currency} ${cartTotal.toFixed(2)} registrada!`);
+      setDesconto(0);
+      setValorRecebido('');
+      setClienteNome('');
+      setClienteDoc('');
+
+      if (storeConfig.impressaoAutomatica) {
+        triggerThermalPrint(vendaCompleta);
+      }
     } catch (err) {
-      console.error(err);
-      showToast('Erro ao registrar venda no Firestore', 'error');
+      onDbError('finalização de venda no PDV', err);
+    } finally {
+      setProcessandoVenda(false);
     }
   };
 
-  // Criar variações de produto na grade Tamanho x Cor
-  const toggleMatrixItem = (list, setList, value) => {
-    setList((prev) =>
-      prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
-    );
-  };
-
-  const handleCreateProductMatrix = async (e) => {
-    e.preventDefault();
-    if (!prodName.trim() || !prodPrice) {
-      showToast('Informe nome e preço do produto', 'error');
-      return;
-    }
-
-    const sizesToUse = matrixSizes.length > 0 ? matrixSizes : ['Único'];
-    const colorsToUse = matrixColors.length > 0 ? matrixColors : ['Padrão'];
-    const qtyNum = Math.max(0, Number(matrixQtyPerVariant || 0));
-    const priceNum = Number(prodPrice);
-    const costNum = Number(prodCost || 0);
-
+  const handleDevolverVenda = async (venda) => {
+    if (!venda || venda.status === 'Devolvida' || venda.status === 'Cancelada') return;
     try {
-      let idx = 0;
-      for (const size of sizesToUse) {
-        for (const color of colorsToUse) {
-          const code =
-            idx === 0 && prodBarcode.trim()
-              ? prodBarcode.trim()
-              : generateBarcode();
-          await addDoc(collection(db, 'products'), {
-            name: prodName.trim(),
-            size,
-            color,
-            price: priceNum,
-            cost: costNum,
-            stock: qtyNum,
-            barcode: code,
-            publishedOnline: prodPublishedOnline,
-            createdAt: serverTimestamp(),
+      for (const item of safeArr(venda.itens)) {
+        if (!item.variacaoId) continue;
+        const vAtual = safeArr(variacoes).find((v) => v.id === item.variacaoId);
+        if (vAtual) {
+          await updateDoc(getPublicDoc('variacoes', item.variacaoId), {
+            estoque: safeNum(vAtual.estoque) + safeNum(item.quantidade)
           });
-          idx += 1;
         }
       }
 
-      setProdName('');
-      setProdPrice('');
-      setProdCost('');
-      setProdBarcode(generateBarcode());
-      showToast(`${idx} variação(ões) adicionada(s) ao estoque!`);
-    } catch (err) {
-      console.error(err);
-      showToast('Erro ao salvar produto', 'error');
-    }
-  };
-
-  const handleAdjustStock = async (productId, currentStock, delta) => {
-    const nextStock = Math.max(0, Number(currentStock || 0) + delta);
-    try {
-      await updateDoc(doc(db, 'products', productId), { stock: nextStock });
-    } catch (err) {
-      console.error(err);
-      showToast('Erro ao atualizar estoque', 'error');
-    }
-  };
-
-  const handleDeleteProduct = async (productId) => {
-    if (role !== 'admin') {
-      showToast('Apenas o Administrador pode excluir produtos', 'error');
-      return;
-    }
-    try {
-      await deleteDoc(doc(db, 'products', productId));
-      showToast('Produto removido');
-    } catch (err) {
-      console.error(err);
-      showToast('Erro ao remover produto', 'error');
-    }
-  };
-
-  // Lançamento financeiro avulso
-  const handleAddTransaction = async (e) => {
-    e.preventDefault();
-    if (!txDesc.trim() || !txAmount || Number(txAmount) <= 0) {
-      showToast('Preencha descrição e valor válido', 'error');
-      return;
-    }
-    try {
-      await addDoc(collection(db, 'transactions'), {
-        type: txType,
-        description: txDesc.trim(),
-        amount: Number(txAmount),
-        createdAt: serverTimestamp(),
+      await updateDoc(getPublicDoc('vendas', venda.id), {
+        status: 'Devolvida',
+        devolvidoEm: new Date().toISOString(),
+        devolvidoPor: currentOperator.nome
       });
-      setTxDesc('');
-      setTxAmount('');
-      showToast('Lançamento financeiro salvo');
-    } catch (err) {
-      console.error(err);
-      showToast('Erro ao salvar lançamento', 'error');
-    }
-  };
 
-  // Salvar configurações da loja
-  const handleSaveConfig = async (e) => {
-    e.preventDefault();
-    if (role !== 'admin') {
-      showToast('Apenas o Administrador pode alterar configurações', 'error');
-      return;
-    }
-    try {
-      await setDoc(
-        doc(db, 'settings', 'storeConfig'),
-        {
-          ...cfgForm,
-          adminPin: String(cfgForm.adminPin || '1234').trim(),
-          staffPin: String(cfgForm.staffPin || '0000').trim(),
-        },
-        { merge: true }
+      if (caixaAberto) {
+        await addDoc(getPublicCol('movimentacoes_caixa'), {
+          caixaId: caixaAberto.id,
+          tipo: 'Sangria',
+          formaPagamento: venda.formaPagamento || 'Caixa',
+          valor: safeNum(venda.total),
+          observacao: `Estorno/Devolução da venda #${String(venda.id).slice(-6).toUpperCase()}`,
+          usuarioId: currentOperator.id,
+          usuarioNome: currentOperator.nome,
+          dataHora: new Date().toISOString()
+        });
+      }
+
+      await registrarAuditoria(
+        'Devolução / Estorno de Venda',
+        `Venda #${String(venda.id).slice(-6).toUpperCase()} (${formatBRL(venda.total)}) estornada e estoque reposto.`
       );
-      showToast('Configurações da loja salvas!');
+      showToast('Venda devolvida e estoque reposto com sucesso!', 'success');
     } catch (err) {
-      console.error(err);
-      showToast('Erro ao salvar configurações', 'error');
+      onDbError('devolução de venda', err);
     }
   };
-
-  // Resumo financeiro
-  const financeSummary = useMemo(() => {
-    const income = transactions
-      .filter((t) => t.type === 'income')
-      .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-    const expense = transactions
-      .filter((t) => t.type === 'expense')
-      .reduce((acc, t) => acc + Number(t.amount || 0), 0);
-    return { income, expense, balance: income - expense };
-  }, [transactions]);
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-        <div className="flex items-center gap-3 text-slate-700 font-medium">
-          <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
-          Conectando ao Firebase...
-        </div>
-      </div>
-    );
-  }
-
-  if (authError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow p-6 border border-red-200">
-          <div className="flex items-center gap-2 text-red-600 font-semibold mb-2">
-            <AlertCircle className="w-5 h-5" />
-            Erro de Conexão
-          </div>
-          <p className="text-sm text-slate-600">{authError}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Tela de bloqueio por PIN
-  if (!role) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 p-4">
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6">
-          <div className="flex flex-col items-center text-center mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg mb-3">
-              <Store className="w-7 h-7" />
-            </div>
-            <h1 className="text-xl font-bold text-slate-900">{config.storeName}</h1>
-            <p className="text-xs text-slate-500 mt-1">
-              ERP • PDV • Loja Virtual Sincronizada
-            </p>
-          </div>
-
-          <form onSubmit={handlePinSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                Digite o seu PIN de Acesso
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={8}
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="••••"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 text-center text-lg tracking-widest font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              {pinError && (
-                <p className="text-xs text-red-600 mt-1.5 font-medium">{pinError}</p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition flex items-center justify-center gap-2"
-            >
-              <Unlock className="w-4 h-4" />
-              Entrar no Sistema
-            </button>
-          </form>
-
-          <div className="mt-6 pt-4 border-t border-slate-100 text-[11px] text-slate-400 text-center space-y-1">
-            <p>PIN Admin padrão: <strong>{config.adminPin}</strong> • PIN Equipa: <strong>{config.staffPin}</strong></p>
-            <p>Altere os PINs na aba Ajustes após entrar.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 pb-24">
-      {/* Notificação Toast */}
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-white text-sm font-medium flex items-center gap-2 ${
-            toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'
-          }`}
-        >
-          {toast.type === 'error' ? (
-            <AlertCircle className="w-4 h-4" />
-          ) : (
-            <CheckCircle2 className="w-4 h-4" />
-          )}
-          <span>{toast.message}</span>
+    <div className="space-y-5">
+      {!caixaAberto && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-rose-600 shrink-0" />
+            <div>
+              <h3 className="font-bold text-rose-900 text-sm">O Caixa está Fechado!</h3>
+              <p className="text-xs text-rose-700">
+                É obrigatório abrir um turno de caixa antes de registrar vendas no PDV.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('financeiro')}
+            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+          >
+            Ir para Controle de Caixa
+          </button>
         </div>
       )}
 
-      {/* Cabeçalho */}
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
-            <Store className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-bold text-base leading-tight text-slate-900">
-              {config.storeName}
-            </h1>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-              <Users className="w-3 h-3" />
-              {role === 'admin' ? 'Administrador' : 'Equipa / Caixa'}
-            </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Frente de Caixa (PDV)</h2>
+          <p className="text-xs text-slate-500">
+            {caixaAberto
+              ? `Caixa aberto por ${caixaAberto.usuarioNome} em ${formatDateTime(caixaAberto.aberturaData)}`
+              : 'Nenhum turno de caixa ativo'}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowHistoricoVendas(!showHistoricoVendas)}
+            className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-2"
+          >
+            <RotateCcw className="w-4 h-4" />
+            {showHistoricoVendas ? 'Voltar ao Caixa' : `Vendas / Devoluções (${safeArr(vendas).length})`}
+          </button>
+        </div>
+      </div>
+
+      {showHistoricoVendas ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <h3 className="font-bold text-slate-900 text-lg">Histórico de Vendas e Devoluções</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase">
+                  <th className="py-3 px-2">Código</th>
+                  <th className="py-3 px-2">Data/Hora</th>
+                  <th className="py-3 px-2">Cliente</th>
+                  <th className="py-3 px-2">Pagamento</th>
+                  <th className="py-3 px-2">Total</th>
+                  <th className="py-3 px-2">Status</th>
+                  <th className="py-3 px-2 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {safeArr(vendas).map((v) => (
+                  <tr key={v.id} className="hover:bg-slate-50">
+                    <td className="py-3 px-2 font-mono text-xs font-bold">
+                      #{String(v.id).slice(-6).toUpperCase()}
+                    </td>
+                    <td className="py-3 px-2 text-xs text-slate-600">{formatDateTime(v.dataHora)}</td>
+                    <td className="py-3 px-2 font-medium">{v.clienteNome || 'Consumidor Final'}</td>
+                    <td className="py-3 px-2 text-xs">{v.formaPagamento}</td>
+                    <td className="py-3 px-2 font-bold text-slate-900">{formatBRL(v.total)}</td>
+                    <td className="py-3 px-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          v.status === 'Devolvida' || v.status === 'Cancelada'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                        }`}
+                      >
+                        {v.status || 'Concluída'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-2 text-right space-x-2 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => triggerThermalPrint(v)}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold inline-flex items-center gap-1"
+                        title="Imprimir Cupom"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        Cupom
+                      </button>
+                      {v.status !== 'Devolvida' && v.status !== 'Cancelada' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDevolverVenda(v)}
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold inline-flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Devolver
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+              <Search className="w-5 h-5 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Bipar código de barras, SKU ou buscar produto..."
+                className="w-full text-sm focus:outline-none text-slate-800"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
 
-        <button
-          onClick={() => setRole(null)}
-          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          Bloquear
-        </button>
-      </header>
-
-      {/* Conteúdo Principal */}
-      <main className="max-w-5xl mx-auto p-4 space-y-5">
-        {/* ABA 1: PDV (Ponto de Venda) */}
-        {activeTab === 'pos' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-2">
-                <Search className="w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Pesquisar por nome, tamanho, cor ou código de barras..."
-                  className="w-full text-sm focus:outline-none"
-                />
+            {filteredProdutos.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center text-slate-500 text-sm">
+                Nenhum produto encontrado. Cadastre produtos em <strong>Produtos e Estoque</strong>.
               </div>
-
-              {filteredProducts.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500 text-sm">
-                  Nenhum produto registado ainda. Vá a <strong>Estoque</strong> para adicionar itens.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {filteredProducts.map((p) => (
-                    <div
-                      key={p.id}
-                      className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between gap-3"
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {filteredProdutos.map((prod) => {
+                  const vars = variacoesPorProduto[prod.id] || [];
+                  const estoqueTotal = vars.reduce((acc, v) => acc + safeNum(v.estoque), 0);
+                  return (
+                    <button
+                      key={prod.id}
+                      type="button"
+                      onClick={() => handleSelectProduto(prod)}
+                      className="text-left bg-white hover:border-emerald-500 border border-slate-200 rounded-2xl p-4 shadow-sm transition-all flex flex-col justify-between gap-3 group"
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold text-slate-900">{p.name}</h3>
-                          <span className="font-bold text-blue-600 text-sm whitespace-nowrap">
-                            {config.currency} {Number(p.price || 0).toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2 text-xs">
-                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-medium">
-                            Tam: {p.size || '-'}
-                          </span>
-                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-medium">
-                            Cor: {p.color || '-'}
+                          <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                            {prod.categoria || 'Geral'}
                           </span>
                           <span
-                            className={`px-2 py-0.5 rounded-md font-medium ${
-                              Number(p.stock) > 0
+                            className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                              estoqueTotal > 0
                                 ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-red-50 text-red-700'
+                                : 'bg-rose-50 text-rose-700'
                             }`}
                           >
-                            Estoque: {p.stock}
+                            {estoqueTotal} un
                           </span>
                         </div>
-                        {p.barcode && (
-                          <p className="text-[11px] text-slate-400 font-mono mt-2 flex items-center gap-1">
+                        <h3 className="font-bold text-slate-900 mt-2 group-hover:text-emerald-700 transition-colors">
+                          {prod.nome}
+                        </h3>
+                        {prod.codigoBarras && (
+                          <p className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-1">
                             <Barcode className="w-3.5 h-3.5" />
-                            {p.barcode}
+                            {prod.codigoBarras}
                           </p>
                         )}
                       </div>
 
-                      <button
-                        onClick={() => addToCart(p)}
-                        disabled={Number(p.stock) <= 0}
-                        className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold transition"
-                      >
-                        {Number(p.stock) > 0 ? 'Adicionar ao Carrinho' : 'Esgotado'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Carrinho de Venda */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm h-fit space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4 text-blue-600" />
-                  Carrinho ({cart.reduce((s, i) => s + i.qty, 0)})
-                </h2>
-                {cart.length > 0 && (
-                  <button
-                    onClick={() => setCart([])}
-                    className="text-xs text-red-600 font-medium hover:underline"
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-
-              {cart.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">
-                  O carrinho está vazio.
-                </p>
-              ) : (
-                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                  {cart.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-xl"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-900 truncate">
-                          {item.name}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          {item.size} • {item.color} • {config.currency} {item.price.toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => updateCartQty(item.id, -1)}
-                          className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="text-xs font-bold w-5 text-center">{item.qty}</span>
-                        <button
-                          onClick={() => updateCartQty(item.id, 1)}
-                          className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="space-y-3 pt-2 border-t border-slate-100 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-600 mb-1">
-                    Cliente (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Nome do cliente"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-semibold text-slate-600 mb-1">
-                      Pagamento
-                    </label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-white"
-                    >
-                      <option value="PIX">PIX</option>
-                      <option value="Dinheiro">Dinheiro</option>
-                      <option value="Cartão">Cartão</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-600 mb-1">
-                      Canal
-                    </label>
-                    <select
-                      value={saleChannel}
-                      onChange={(e) => setSaleChannel(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-white"
-                    >
-                      <option value="PDV">Loja Física (PDV)</option>
-                      <option value="Loja Virtual">Loja Virtual</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-base font-bold text-slate-900 pt-1">
-                  <span>Total</span>
-                  <span>
-                    {config.currency} {cartTotal.toFixed(2)}
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => handleCheckout()}
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm transition"
-                >
-                  Finalizar Venda
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ABA 2: ESTOQUE & GRADE TAMANHO/COR */}
-        {activeTab === 'inventory' && (
-          <div className="space-y-5">
-            {role === 'admin' ? (
-              <form
-                onSubmit={handleCreateProductMatrix}
-                className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4"
-              >
-                <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-blue-600" />
-                  Registar Produto com Grade (Tamanho x Cor) & Código de Barras
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Nome do Produto *
-                    </label>
-                    <input
-                      type="text"
-                      value={prodName}
-                      onChange={(e) => setProdName(e.target.value)}
-                      placeholder="Ex: T-shirt Básica"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Preço de Venda ({config.currency}) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={prodPrice}
-                      onChange={(e) => setProdPrice(e.target.value)}
-                      placeholder="79.90"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Custo Unitário ({config.currency})
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={prodCost}
-                      onChange={(e) => setProdCost(e.target.value)}
-                      placeholder="35.00"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      Tamanhos na Grade
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {DEFAULT_SIZES.map((sz) => {
-                        const active = matrixSizes.includes(sz);
-                        return (
-                          <button
-                            type="button"
-                            key={sz}
-                            onClick={() => toggleMatrixItem(matrixSizes, setMatrixSizes, sz)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                              active
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-slate-50 text-slate-600 border-slate-200'
-                            }`}
-                          >
-                            {sz}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                      Cores na Grade
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {DEFAULT_COLORS.map((col) => {
-                        const active = matrixColors.includes(col);
-                        return (
-                          <button
-                            type="button"
-                            key={col}
-                            onClick={() => toggleMatrixItem(matrixColors, setMatrixColors, col)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                              active
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-slate-50 text-slate-600 border-slate-200'
-                            }`}
-                          >
-                            {col}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Qtd Inicial por Variação
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={matrixQtyPerVariant}
-                      onChange={(e) => setMatrixQtyPerVariant(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Código de Barras (EAN/SKU)
-                    </label>
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        value={prodBarcode}
-                        onChange={(e) => setProdBarcode(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setProdBarcode(generateBarcode())}
-                        className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold"
-                        title="Gerar novo código"
-                      >
-                        <Barcode className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 py-2">
-                    <input
-                      type="checkbox"
-                      checked={prodPublishedOnline}
-                      onChange={(e) => setProdPublishedOnline(e.target.checked)}
-                      className="rounded"
-                    />
-                    Publicar na Loja Virtual
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition"
-                >
-                  Guardar Variações no Estoque
-                </button>
-              </form>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-2xl text-xs">
-                Modo Equipa: pode consultar e ajustar quantidades. A eliminação e criação em lote exigem PIN de Administrador.
-              </div>
-            )}
-
-            {/* Lista de Estoque */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-900 text-sm">
-                  Itens em Estoque ({products.length})
-                </h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {products.map((p) => (
-                  <div
-                    key={p.id}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-slate-900 text-sm">{p.name}</span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                          {p.size} • {p.color}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                        <span className="text-base font-extrabold text-emerald-700">
+                          {formatBRL(prod.precoVenda)}
                         </span>
-                        {p.publishedOnline && (
-                          <span className="text-[11px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
-                            Online
-                          </span>
-                        )}
+                        <span className="text-xs font-semibold text-slate-500">
+                          {vars.length > 1 ? `${vars.length} grades` : 'Adicionar'}
+                        </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1 font-mono">
-                        {config.currency} {Number(p.price || 0).toFixed(2)} • Cód: {p.barcode || '-'}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleAdjustStock(p.id, p.stock, -1)}
-                        className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </button>
-                      <span className="min-w-[3.5rem] text-center text-xs font-bold bg-slate-50 border border-slate-200 py-1.5 rounded-lg">
-                        {p.stock} un
-                      </span>
-                      <button
-                        onClick={() => handleAdjustStock(p.id, p.stock, 1)}
-                        className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                      {role === 'admin' && (
-                        <button
-                          onClick={() => handleDeleteProduct(p.id)}
-                          className="w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 flex items-center justify-center"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ABA 3: LOJA VIRTUAL */}
-        {activeTab === 'online' && (
-          <div className="space-y-4">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-blue-600" />
-                  Montra Online Sincronizada
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Pedidos feitos aqui descontam o estoque em tempo real para o PDV físico.
-                </p>
-              </div>
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                  config.onlineStoreEnabled
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-200 text-slate-600'
-                }`}
-              >
-                {config.onlineStoreEnabled ? 'Loja Ativa' : 'Loja Pausada'}
-              </span>
-            </div>
-
-            {!config.onlineStoreEnabled ? (
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-sm text-slate-500">
-                A Loja Virtual está pausada nos Ajustes.
-              </div>
-            ) : onlineProducts.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-sm text-slate-500">
-                Nenhum produto publicado com estoque disponível no momento.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {onlineProducts.map((p) => (
-                  <div
-                    key={p.id}
-                    className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between gap-3"
-                  >
-                    <div>
-                      <span className="text-[11px] font-semibold text-blue-600 uppercase">
-                        {p.size} • {p.color}
-                      </span>
-                      <h3 className="font-bold text-slate-900 mt-0.5">{p.name}</h3>
-                      <p className="text-lg font-extrabold text-slate-900 mt-2">
-                        {config.currency} {Number(p.price || 0).toFixed(2)}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-1">{p.stock} disponíveis</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        addToCart(p);
-                        setSaleChannel('Loja Virtual');
-                        setActiveTab('pos');
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
-                    >
-                      Adicionar ao Pedido
                     </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
-        )}
 
-        {/* ABA 4: FINANCEIRO & VENDAS */}
-        {activeTab === 'finance' && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <p className="text-xs text-slate-500 flex items-center gap-1">
-                  <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-                  Entradas
-                </p>
-                <p className="text-xl font-bold text-emerald-700 mt-1">
-                  {config.currency} {financeSummary.income.toFixed(2)}
-                </p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <p className="text-xs text-slate-500 flex items-center gap-1">
-                  <ArrowDownRight className="w-4 h-4 text-red-600" />
-                  Saídas
-                </p>
-                <p className="text-xl font-bold text-red-600 mt-1">
-                  {config.currency} {financeSummary.expense.toFixed(2)}
-                </p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <p className="text-xs text-slate-500 flex items-center gap-1">
-                  <Wallet className="w-4 h-4 text-blue-600" />
-                  Saldo em Caixa
-                </p>
-                <p className="text-xl font-bold text-slate-900 mt-1">
-                  {config.currency} {financeSummary.balance.toFixed(2)}
-                </p>
-              </div>
-            </div>
-
-            {role === 'admin' && (
-              <form
-                onSubmit={handleAddTransaction}
-                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-3 items-end"
-              >
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Tipo</label>
-                  <select
-                    value={txType}
-                    onChange={(e) => setTxType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"
-                  >
-                    <option value="income">Entrada</option>
-                    <option value="expense">Saída / Despesa</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Descrição
-                  </label>
-                  <input
-                    type="text"
-                    value={txDesc}
-                    onChange={(e) => setTxDesc(e.target.value)}
-                    placeholder="Ex: Eletricidade, Fornecedor"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Valor ({config.currency})
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={txAmount}
-                    onChange={(e) => setTxAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold"
-                >
-                  Lançar
-                </button>
-              </form>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-2.5">
-                <h3 className="font-bold text-sm text-slate-900">
-                  Últimas Vendas ({sales.length})
-                </h3>
-                {sales.slice(0, 10).map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between text-xs py-2 border-b border-slate-100 last:border-0"
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-800">
-                        {s.customerName} • <span className="text-blue-600">{s.channel}</span>
-                      </p>
-                      <p className="text-slate-400">{s.paymentMethod}</p>
-                    </div>
-                    <span className="font-bold text-emerald-700">
-                      {config.currency} {Number(s.total || 0).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-2.5">
-                <h3 className="font-bold text-sm text-slate-900">
-                  Fluxo de Caixa ({transactions.length})
-                </h3>
-                {transactions.slice(0, 10).map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between text-xs py-2 border-b border-slate-100 last:border-0"
-                  >
-                    <span className="font-medium text-slate-700">{t.description}</span>
-                    <span
-                      className={`font-bold ${
-                        t.type === 'income' ? 'text-emerald-700' : 'text-red-600'
-                      }`}
-                    >
-                      {t.type === 'income' ? '+' : '-'} {config.currency}{' '}
-                      {Number(t.amount || 0).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ABA 5: AJUSTES */}
-        {activeTab === 'settings' && (
-          <form
-            onSubmit={handleSaveConfig}
-            className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 max-w-xl"
-          >
-            <h2 className="font-bold text-slate-900 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-blue-600" />
-              Ajustes da Loja e PINs
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Nome da Loja
-                </label>
-                <input
-                  type="text"
-                  value={cfgForm.storeName}
-                  onChange={(e) => setCfgForm({ ...cfgForm, storeName: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Moeda
-                </label>
-                <input
-                  type="text"
-                  value={cfgForm.currency}
-                  onChange={(e) => setCfgForm({ ...cfgForm, currency: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  PIN Administrador
-                </label>
-                <input
-                  type="text"
-                  value={cfgForm.adminPin}
-                  onChange={(e) => setCfgForm({ ...cfgForm, adminPin: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  PIN Equipa (PDV)
-                </label>
-                <input
-                  type="text"
-                  value={cfgForm.staffPin}
-                  onChange={(e) => setCfgForm({ ...cfgForm, staffPin: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono"
-                />
-              </div>
-            </div>
-
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-              <input
-                type="checkbox"
-                checked={!!cfgForm.onlineStoreEnabled}
-                onChange={(e) =>
-                  setCfgForm({ ...cfgForm, onlineStoreEnabled: e.target.checked })
-                }
-              />
-              Manter Loja Virtual ativa
-            </label>
-
-            <button
-              type="submit"
-              disabled={role !== 'admin'}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-sm font-semibold"
-            >
-              Guardar Ajustes
-            </button>
-          </form>
-        )}
-      </main>
-
-      {/* Barra de Navegação Inferior (Mobile-first) */}
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 px-2 py-1.5 z-30">
-        <div className="max-w-5xl mx-auto grid grid-cols-5 gap-1 text-[11px] font-semibold">
-          <button
-            onClick={() => setActiveTab('pos')}
-            className={`py-2 rounded-xl flex flex-col items-center gap-0.5 ${
-              activeTab === 'pos' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            PDV
-          </button>
-
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className={`py-2 rounded-xl flex flex-col items-center gap-0.5 ${
-              activeTab === 'inventory' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            Estoque
-          </button>
-
-          <button
-            onClick={() => setActiveTab('online')}
-            className={`py-2 rounded-xl flex flex-col items-center gap-0.5 ${
-              activeTab === 'online' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'
-            }`}
-          >
-            <Globe className="w-4 h-4" />
-            Loja
-          </button>
-
-          <button
-            onClick={() => setActiveTab('finance')}
-            className={`py-2 rounded-xl flex flex-col items-center gap-0.5 ${
-              activeTab === 'finance' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            Caixa
-          </button>
-
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`py-2 rounded-xl flex flex-col items-center gap-0.5 ${
-              activeTab === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Ajustes
-          </button>
-        </div>
-      </nav>
-    </div>
-  );
-}
+          <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4
