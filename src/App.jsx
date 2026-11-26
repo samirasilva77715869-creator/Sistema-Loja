@@ -50,15 +50,16 @@ import {
 // ============================================================================
 // 1. CONFIGURAÇÃO DO FIREBASE (PROJETO: sistemaloja-232f1)
 // ============================================================================
-const FALLBACK_FIREBASE_CONFIG = {apiKey: 'AIzaSyB_demo_key_placeholder',
-  authDomain: 'sistemaloja-232f1.firebaseapp.com',
-  projectId: 'sistemaloja-232f1',
-  storageBucket: 'sistemaloja-232f1.firebasestorage.app',
-  messagingSenderId: '000000000000',
-  appId: '1:000000000000:web:0000000000000000'
-  
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const FALLBACK_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDVrcLxpCrT-MplN17tGzAzOJpa5iAiVBM",
+  authDomain: "sistemaloja-232f1.firebaseapp.com",
+  projectId: "sistemaloja-232f1",
+  storageBucket: "sistemaloja-232f1.firebasestorage.app",
+  messagingSenderId: "865838406214",
+  appId: "1:865838406214:web:d5e86529f0aafe67ae4847",
+  measurementId: "G-8JWBR4ZZ0Y"
 };
-
 function resolveFirebaseConfig() {
   try {
     if (typeof __firebase_config !== 'undefined' && __firebase_config) {
