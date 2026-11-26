@@ -50,13 +50,13 @@ import {
 // ============================================================================
 // 1. CONFIGURAÇÃO DO FIREBASE (PROJETO: sistemaloja-232f1)
 // ============================================================================
-const FALLBACK_FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyB_demo_key_placeholder',
+const FALLBACK_FIREBASE_CONFIG = {apiKey: 'AIzaSyB_demo_key_placeholder',
   authDomain: 'sistemaloja-232f1.firebaseapp.com',
   projectId: 'sistemaloja-232f1',
   storageBucket: 'sistemaloja-232f1.firebasestorage.app',
   messagingSenderId: '000000000000',
   appId: '1:000000000000:web:0000000000000000'
+  
 };
 
 function resolveFirebaseConfig() {
