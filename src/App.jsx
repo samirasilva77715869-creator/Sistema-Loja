@@ -2348,14 +2348,14 @@ function ProdutosEstoqueView({
               .trim()
               .slice(0, 3)
               .toUpperCase()}-${tam}-${cor.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-            const codBarrasVar = countVars === 0 ? barcodeLimpo : generateEAN13();
+                const codBarrasVar = barcodeLimpo;
             await addDoc(getPublicCol('variacoes'), {
               produtoId: prodRef.id,
               produtoNome: nome.trim(),
               tamanho: tam,
               cor,
               sku: skuGerado,
-              codigoBarras: codBarrasVar,
+              codigoBarras: barcodeLimpo,
               precoVenda: vendaNum,
               precoCusto: custoNum,
               estoque: qtdIni,
