@@ -691,8 +691,8 @@ function ErpPdvSystem() {
     { id: 'pdv', label: 'Frente de Caixa (PDV)', icon: ShoppingCart, adminOnly: false },
     { id: 'produtos', label: 'Produtos e Estoque', icon: Package, adminOnly: false },
     { id: 'financeiro', label: 'Controle Financeiro', icon: DollarSign, adminOnly: false },
-    { id: 'contabilidade', label: 'Contabilidade' },
-    
+      { id: 'contabilidade', label: 'Contabilidade', adminOnly: false },
+
     { id: 'pedidos_online',
       label: 'Pedidos Online',
       icon: ShoppingBag,
