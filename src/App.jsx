@@ -887,7 +887,14 @@ function ErpPdvSystem() {
             registrarAuditoria={registrarAuditoria}
             onDbError={handleDbError}
           />
-        )}
+        )} 
+        {activeTab === 'contabilidade' && (
+  <ContabilidadeView
+    movimentacoesCaixa={movimentacoesCaixa}
+    caixas={caixas}
+  />
+)}
+        
 
         {activeTab === 'pedidos_online' && (
           <PedidosOnlineAdminView
